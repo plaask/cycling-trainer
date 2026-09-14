@@ -75,9 +75,14 @@ class BluetoothLeManager(
      * still reports them as connected after the peripheral goes to sleep /
      * drops radio). Role state on the calling side is reconciled afterwards
      * via [connectionState] flows, so a re-pair actually opens a fresh link.
+     *
+     * Sessions still being opened are never swept: a fresh session reports
+     * DISCONNECTED until the stack answers, so a sweep during discovery would
+     * tear down the very connection that is being established.
      */
     fun sweepStaleSessions() {
         sessions.values.forEach { s ->
+            if (s.isOpening()) return@forEach
             if (!s.linkAlive()) {
                 sessions.remove(s.address, s)
                 s.dispose()
@@ -231,6 +236,9 @@ class BluetoothLeManager(
         private var gatt: BluetoothGatt? = null
         private val closed = AtomicBoolean(false)
 
+        /** Set between connectGatt() and the end of service discovery. */
+        @Volatile private var opening = false
+
         // pending slots — completed by callback handlers on the BT thread
         @Volatile private var pendingRead: CompletableDeferred<ByteArray?>? = null
         @Volatile private var pendingWrite: CompletableDeferred<Boolean>? = null
@@ -268,10 +276,18 @@ class BluetoothLeManager(
                 appContext, false, gattCallback, BluetoothDevice.TRANSPORT_LE
             ) ?: throw IllegalStateException("connectGatt returned null for $address")
             gatt = g
-            // Wait for service discovery success.
-            withTimeoutOrNull(15_000) { _connectOpen.await() }
-                ?: throw IllegalStateException("connect/discovery timeout for $address")
+            opening = true
+            try {
+                // Wait for service discovery success.
+                withTimeoutOrNull(15_000) { _connectOpen.await() }
+                    ?: throw IllegalStateException("connect/discovery timeout for $address")
+            } finally {
+                opening = false
+            }
         }
+
+        /** True while [open] is still waiting for connect + discovery. */
+        fun isOpening(): Boolean = opening
 
         private val gattCallback = object : BluetoothGattCallback() {
             @SuppressLint("MissingPermission")

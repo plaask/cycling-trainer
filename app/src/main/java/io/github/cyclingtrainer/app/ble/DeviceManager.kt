@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -44,16 +45,44 @@ class DeviceManager(
         if (name != null) knownNames[address] = name
     }
 
-    // Live aggregates.
-    val powerWatts = MutableStateFlow<Int?>(null)
-    val heartRateBpm = MutableStateFlow<Int?>(null)
+    // Live aggregates. Each reading expires after a few seconds without a new
+    // frame, so a sleeping strap or a powered-off trainer reads as "—" instead
+    // of freezing its last value (and writing it into the ride CSV).
+    private val powerReading = Reading<Int>()
+    private val hrReading = Reading<Int>()
+    private val speedReading = Reading<Double>()
+    private val cscReading = Reading<Double>()
+    private val trainerCadenceReading = Reading<Double>()
+
+    /** Monotonic milliseconds; bumped so stale readings re-evaluate. */
+    private val freshnessTick = MutableStateFlow(nowMs())
+
+    init {
+        // Ticker that re-evaluates staleness even when no new frame arrives
+        // (that is exactly the case where a value has to disappear).
+        externalScope.launch {
+            while (true) {
+                delay(500)
+                freshnessTick.value = nowMs()
+            }
+        }
+    }
+
+    val powerWatts: StateFlow<Int?> =
+        combine(powerReading.state, freshnessTick) { _: Long, now: Long ->
+            powerReading.value(now)
+        }.stateIn(externalScope, SharingStarted.Eagerly, null)
+
+    val heartRateBpm: StateFlow<Int?> =
+        combine(hrReading.state, freshnessTick) { _: Long, now: Long ->
+            hrReading.value(now)
+        }.stateIn(externalScope, SharingStarted.Eagerly, null)
 
     /** Instantaneous trainer speed in km/h (FE-C page 16 / FTMS 0x2AD2). */
-    val speedKmh = MutableStateFlow<Double?>(null)
-
-    // Cadence source priority: CSC preferred, trainer (FTMS/FE-C) fallback.
-    private val cscCadence = MutableStateFlow<Double?>(null)
-    private val trainerCadence = MutableStateFlow<Double?>(null)
+    val speedKmh: StateFlow<Double?> =
+        combine(speedReading.state, freshnessTick) { _: Long, now: Long ->
+            speedReading.value(now)
+        }.stateIn(externalScope, SharingStarted.Eagerly, null)
 
     /** Protocol tag of the connected trainer for the UI (FTMS / FE-C / —). */
     private val trainerSourceTag = MutableStateFlow("—")
@@ -61,15 +90,17 @@ class DeviceManager(
     /** Effective cadence: external CSC wins while attached; otherwise the
      *  trainer's own cadence fills in. */
     val cadenceRpm: StateFlow<Double?> = combine(
-        cscCadence, trainerCadence, cscAddress,
-    ) { csc, t, cscAddr ->
-        if (cscAddr != null) csc else t
+        cscReading.state, trainerCadenceReading.state, cscAddress, freshnessTick,
+    ) { _: Long, _: Long, cscAddr: String?, now: Long ->
+        if (cscAddr != null) cscReading.value(now) else trainerCadenceReading.value(now)
     }.stateIn(externalScope, SharingStarted.Eagerly, null)
 
     /** Cadence source tag for the UI. */
     val cadenceSource: StateFlow<String> = combine(
-        cscCadence, trainerCadence, trainerSourceTag, cscAddress,
-    ) { csc, t, tag, cscAddr ->
+        cscReading.state, trainerCadenceReading.state, trainerSourceTag, cscAddress, freshnessTick,
+    ) { _: Long, _: Long, tag: String, cscAddr: String?, now: Long ->
+        val csc = cscReading.value(now)
+        val t = trainerCadenceReading.value(now)
         when {
             cscAddr != null -> if (csc != null) "CSC" else "CSC(—)"
             t != null -> tag
@@ -137,6 +168,7 @@ class DeviceManager(
                 "csc" -> {
                     val sensor = CadenceSensor(s, externalScope)
                     sensor.connect().getOrThrow()
+                    sawCscFrame = false
                     cscAddress.value = address
                     launchCadence(sensor, address)
                     watchSession(s, "csc")
@@ -146,6 +178,10 @@ class DeviceManager(
             Result.success(Unit)
         } catch (e: Exception) {
             errorMessage.value = "${roleLabel(role)}: ${e.message ?: "连接失败"}"
+            // A session that never became a role must not be left behind: the
+            // device row would still offer "连接" while a live GATT session sat
+            // in the manager with nothing reading it.
+            runCatching { ble.disconnect(address) }
             Result.failure(e)
         }
     }
@@ -162,17 +198,17 @@ class DeviceManager(
             t.powerFlow.collect { p ->
                 // FE-C interleaves telemetry pages; frames without power come
                 // through as null and must not blank the last reading.
-                if (p != null) powerWatts.value = p
+                if (p != null) powerReading.set(p, nowMs())
             }
         }
         externalScope.launch {
             t.cadenceFlow.collect { c ->
-                if (c != null) trainerCadence.value = c.toDouble()
+                if (c != null) trainerCadenceReading.set(c.toDouble(), nowMs())
             }
         }
         externalScope.launch {
             t.speedFlow.collect { s ->
-                if (s != null) speedKmh.value = s
+                if (s != null) speedReading.set(s, nowMs())
             }
         }
     }
@@ -182,6 +218,10 @@ class DeviceManager(
      * (strap sleeps / trainer powers off) the role address is cleared so the
      * UI stops showing "已连接"; the device page still lists it and can be
      * re-paired (it sweeps stale sessions first).
+     *
+     * The role's readings are dropped at the same moment: otherwise the last
+     * power/heart-rate value would keep being displayed and recorded after the
+     * device is gone.
      */
     private fun watchSession(s: BluetoothLeManager.GattSession, role: String) {
         externalScope.launch {
@@ -193,36 +233,60 @@ class DeviceManager(
                             trainerReady.value = false
                             trainerDriver = null
                             trainerSourceTag.value = "—"
+                            clearTrainerReadings()
                         }
-                        "hr" -> if (hrAddress.value == s.address) hrAddress.value = null
-                        "csc" -> if (cscAddress.value == s.address) cscAddress.value = null
+                        "hr" -> if (hrAddress.value == s.address) {
+                            hrAddress.value = null
+                            hrReading.clear()
+                        }
+                        "csc" -> if (cscAddress.value == s.address) {
+                            cscAddress.value = null
+                            cscReading.clear()
+                        }
                     }
                 }
             }
         }
     }
 
+    private fun clearTrainerReadings() {
+        powerReading.clear()
+        speedReading.clear()
+        trainerCadenceReading.clear()
+    }
+
     private fun launchHeartRate(s: HeartRateSensor) {
         externalScope.launch {
-            s.heartRateFlow.collect { hr -> if (hr != null) heartRateBpm.value = hr }
+            s.heartRateFlow.collect { hr -> if (hr != null) hrReading.set(hr, nowMs()) }
         }
     }
 
     private fun launchCadence(s: CadenceSensor, address: String) {
         externalScope.launch {
-            s.cadenceFlow.collect { c -> if (c != null) cscCadence.value = c }
+            s.cadenceFlow.collect { c ->
+                // Any frame (even one without a usable delta) proves the
+                // subscription works.
+                sawCscFrame = true
+                if (c != null) cscReading.set(c, nowMs())
+            }
         }
         // Health net: many CSC sensors need a moment after subscribe; if the
         // first frame has not arrived shortly after connecting, re-arm the
         // notification once (some stacks drop the first CCCD write silently).
+        // The check is "has any frame ever arrived", not "is a value present":
+        // a rider who simply is not pedalling yet must not be read as a dead
+        // sensor.
         externalScope.launch {
             kotlinx.coroutines.delay(2500)
-            if (cscAddress.value == address && cscCadence.value == null) {
+            if (cscAddress.value == address && !sawCscFrame) {
                 Log.i("DeviceManager", "CSC 无帧，尝试重订阅 $address")
                 s.resubscribe()
             }
         }
     }
+
+    /** Set as soon as any CSC frame is parsed, valid cadence or not. */
+    @Volatile private var sawCscFrame = false
 
     suspend fun setTargetPower(watts: Int): Boolean =
         trainerDriver?.setTargetPower(watts) ?: false
@@ -238,15 +302,13 @@ class DeviceManager(
         if (trainerAddress.value == address) {
             ble.disconnect(address); trainerDriver = null
             trainerAddress.value = null; trainerReady.value = false; trainerSourceTag.value = "—"
+            clearTrainerReadings()
         }
-        if (hrAddress.value == address) { ble.disconnect(address); hrAddress.value = null }
-        if (cscAddress.value == address) { ble.disconnect(address); cscAddress.value = null }
-        if (trainerAddress.value == null && hrAddress.value == null && cscAddress.value == null) {
-            powerWatts.value = null
-            heartRateBpm.value = null
-            cscCadence.value = null
-            trainerCadence.value = null
-            speedKmh.value = null
+        if (hrAddress.value == address) {
+            ble.disconnect(address); hrAddress.value = null; hrReading.clear()
+        }
+        if (cscAddress.value == address) {
+            ble.disconnect(address); cscAddress.value = null; cscReading.clear()
         }
     }
 
@@ -258,11 +320,9 @@ class DeviceManager(
         cscAddress.value = null
         trainerReady.value = false
         trainerSourceTag.value = "—"
-        powerWatts.value = null
-        heartRateBpm.value = null
-        cscCadence.value = null
-        trainerCadence.value = null
-        speedKmh.value = null
+        clearTrainerReadings()
+        hrReading.clear()
+        cscReading.clear()
         if (clearError) errorMessage.value = null
     }
 
@@ -271,3 +331,6 @@ class DeviceManager(
         externalScope.cancel()
     }
 }
+
+/** Monotonic milliseconds; immune to wall-clock jumps. */
+private fun nowMs(): Long = System.nanoTime() / 1_000_000
