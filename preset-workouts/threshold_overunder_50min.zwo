@@ -1,0 +1,13 @@
+<workout_file>
+  <author>opencycling-workouts</author>
+  <name>Threshold Over-Under 50min</name>
+  <description>变强度阈值课：热身 10 分钟，2 组 × 4 轮 (2 分钟 105% FTP 超阈值 / 2 分钟 90% FTP 阈值下沿) 交替，组间 4 分钟 60%，冷身 5 分钟。提高阈值功率可维持性。</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.40" PowerHigh="0.80" Cadence="95"/>
+    <IntervalsT Repeat="4" OnDuration="120" OnPower="1.05" OffDuration="120" OffPower="0.90"/>
+    <SteadyState Duration="240" Power="0.60" Cadence="90" name="Recovery between sets"/>
+    <IntervalsT Repeat="4" OnDuration="120" OnPower="1.05" OffDuration="120" OffPower="0.90"/>
+    <Cooldown Duration="300" PowerLow="0.80" PowerHigh="0.40" Cadence="90"/>
+  </workout>
+</workout_file>

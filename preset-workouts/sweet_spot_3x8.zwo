@@ -1,0 +1,15 @@
+<workout_file>
+  <author>opencycling-workouts</author>
+  <name>Sweet Spot 3x8</name>
+  <description>甜点区课：热身 8 分钟，3×8 分钟 90% FTP 甜点区（组间 4 分钟 55%），冷身 5 分钟。高效提升 FTP。</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="480" PowerLow="0.40" PowerHigh="0.75" Cadence="90"/>
+    <SteadyState Duration="480" Power="0.90" Cadence="90" name="Sweet Spot 1"/>
+    <SteadyState Duration="240" Power="0.55" Cadence="90" name="Recovery"/>
+    <SteadyState Duration="480" Power="0.90" Cadence="90" name="Sweet Spot 2"/>
+    <SteadyState Duration="240" Power="0.55" Cadence="90" name="Recovery"/>
+    <SteadyState Duration="480" Power="0.90" Cadence="90" name="Sweet Spot 3"/>
+    <Cooldown Duration="300" PowerLow="0.75" PowerHigh="0.40" Cadence="90"/>
+  </workout>
+</workout_file>

@@ -1,0 +1,11 @@
+<workout_file>
+  <author>opencycling-workouts</author>
+  <name>Recovery 30min</name>
+  <description>纯恢复踩踏：30 分钟 55% FTP 稳态，帮助排酸与恢复。</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="240" PowerLow="0.40" PowerHigh="0.55" Cadence="90"/>
+    <SteadyState Duration="1320" Power="0.55" Cadence="90" name="Recovery"/>
+    <Cooldown Duration="240" PowerLow="0.55" PowerHigh="0.40" Cadence="90"/>
+  </workout>
+</workout_file>

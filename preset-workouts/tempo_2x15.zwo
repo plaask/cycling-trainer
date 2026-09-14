@@ -1,0 +1,13 @@
+<workout_file>
+  <author>opencycling-workouts</author>
+  <name>Tempo 2x15</name>
+  <description>节奏课：热身 10 分钟，2×15 分钟 88% FTP（组间 5 分钟 55%），冷身 5 分钟。稳定的乳酸阈值附近节奏。</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.40" PowerHigh="0.78" Cadence="95"/>
+    <SteadyState Duration="900" Power="0.88" Cadence="95" name="Tempo 1"/>
+    <SteadyState Duration="300" Power="0.55" Cadence="90" name="Recovery"/>
+    <SteadyState Duration="900" Power="0.88" Cadence="95" name="Tempo 2"/>
+    <Cooldown Duration="300" PowerLow="0.78" PowerHigh="0.40" Cadence="90"/>
+  </workout>
+</workout_file>

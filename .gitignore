@@ -1,0 +1,18 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cxx
+# Local build caches (this machine)
+.gradle-home/
+.tmp/
+.android/
+.kotlin/
+# Keys: never commit signing material (the debug keystore lives in .android/)
+*.jks
+*.keystore
+Dl.java
