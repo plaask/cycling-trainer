@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,11 +64,18 @@ fun HistoryScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
     var deletedName by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<File?>(null) }
 
-    LaunchedEffect(refreshed) {
+    // Also refresh when a ride finishes, so a just-recorded CSV shows up
+    // without leaving and re-entering the tab.
+    val recordedRides by vm.recordedRides.collectAsState()
+
+    LaunchedEffect(refreshed, recordedRides) {
+        // Directory listing is disk I/O: keep it off the main thread.
         val dir = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "rides")
-        rides = dir.listFiles { f ->
-            f.isFile && f.extension.equals("csv", true)
-        }?.sortedByDescending { it.lastModified() } ?: emptyList()
+        rides = withContext(Dispatchers.IO) {
+            dir.listFiles { f ->
+                f.isFile && f.extension.equals("csv", true)
+            }?.sortedByDescending { it.lastModified() } ?: emptyList()
+        }
     }
 
     Column(modifier.fillMaxSize().padding(16.dp)) {
@@ -114,13 +122,16 @@ fun HistoryScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
             text = { Text("确定删除这条训练记录吗？\n\n${f.name}\n\n仅删除本机 CSV 记录，已导出的 FIT 文件不受影响。") },
             confirmButton = {
                 TextButton(onClick = {
-                    val ok = f.delete()
+                    val target = f
                     pendingDelete = null
-                    if (ok) {
-                        deletedName = f.nameWithoutExtension
-                        refreshed++
-                    } else {
-                        error = "删除失败（文件可能已被移除）"
+                    scope.launch {
+                        val ok = withContext(Dispatchers.IO) { target.delete() }
+                        if (ok) {
+                            deletedName = target.nameWithoutExtension
+                            refreshed++
+                        } else {
+                            error = "删除失败（文件可能已被移除）"
+                        }
                     }
                 }) { Text("删除", color = MaterialTheme.colorScheme.error) }
             },

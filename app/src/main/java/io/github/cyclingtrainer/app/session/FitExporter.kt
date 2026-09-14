@@ -22,6 +22,9 @@ import java.util.TimeZone
  */
 object FitExporter {
 
+    /** First column of [RideRecorder.CSV_HEADER]; identifies a ride CSV. */
+    private const val HEADER_PREFIX = "elapsed_s"
+
     private val NAME_STAMP = Regex("""^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})_""")
 
     /** Seconds between the Unix epoch and the FIT epoch (1989-12-31 UTC). */
@@ -35,7 +38,7 @@ object FitExporter {
         if (lines.isEmpty()) return emptyList()
         // Skip the header if present.
         val header = lines.first()
-        val body = if (header.startsWith("elapsed_s")) lines.drop(1) else lines
+        val body = if (header.startsWith(HEADER_PREFIX)) lines.drop(1) else lines
         return body.mapNotNull { line ->
             val parts = line.split(",")
             val elapsed = parts.getOrNull(0)?.trim()?.toIntOrNull() ?: return@mapNotNull null

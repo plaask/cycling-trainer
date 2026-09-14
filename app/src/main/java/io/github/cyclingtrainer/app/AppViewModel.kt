@@ -6,8 +6,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import androidx.activity.ComponentActivity
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -22,10 +20,7 @@ import io.github.cyclingtrainer.app.session.SessionEngine
 import io.github.cyclingtrainer.app.ui.theme.ThemeMode
 import io.github.cyclingtrainer.app.workout.CourseSource
 import io.github.cyclingtrainer.app.workout.Workout
-import io.github.cyclingtrainer.app.workout.ZwoParser
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -192,6 +187,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val liveSamples: List<RideSample>
         get() = recorder?.snapshot() ?: emptyList()
 
+    /**
+     * Increments once per finished ride, after its CSV has been written.
+     * The history list observes this to refresh itself — previously a ride
+     * recorded on the train tab never appeared until the app restarted.
+     */
+    val recordedRides = MutableStateFlow(0)
+
     /** Whether ERG (trainer-driven resistance) is enabled during the session. */
     val ergEnabled = MutableStateFlow(true)
 
@@ -218,10 +220,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // target flow fed to recorder + engine
-    private val targetChannel = MutableSharedFlow<Int>(extraBufferCapacity = 8)
-
-    private var sessionJob: Job? = null
+    /**
+     * Latest target power (watts) fed to the recorder. A StateFlow, not a
+     * buffered SharedFlow: the engine pushes the first target at t=0 before
+     * the recorder has started collecting, and a SharedFlow with no replay
+     * dropped it, leaving the first CSV row's target empty.
+     */
+    private val targetChannel = MutableStateFlow<Int?>(null)
 
     fun toggleScan() {
         if (scanning.value) {
@@ -304,10 +309,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Starts [workout] (null = free ride: no ERG target, recording only)
      * against the connected trainer (if any) + recorder.
+     *
+     * Guarded by the session phase rather than by a Job handle: the engine is
+     * the single owner of "is a ride active", so a second Start while running
+     * cannot build a parallel recorder/engine pair.
      */
     fun startWorkout(workout: Workout?) {
-        val job = sessionJob
-        if (job != null && job.isActive) return
+        if (sessionPhase.value == SessionEngine.Phase.RUNNING ||
+            sessionPhase.value == SessionEngine.Phase.PAUSED
+        ) {
+            return
+        }
         val mgr = deviceManager
         val ftp = ftpWatts.value.coerceAtLeast(50)
         val ctx = getApplication<Application>()
@@ -325,15 +337,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             hrFlow = mgr.heartRateBpm,
             targetFlow = targetChannel,
             scope = viewModelScope,
-        )
-        recorder?.start()
+        ).also { it.start() }
 
         engine = SessionEngine(
             workout = workout,
             ftpWatts = ftp,
             onTargetPower = { watts ->
                 currentTargetWatts.value = watts
-                targetChannel.tryEmit(watts)
+                targetChannel.value = watts
                 // Best-effort push to the trainer only while ERG is enabled;
                 // the target itself is always reported so the display stays
                 // live when ERG is off.
@@ -342,14 +353,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             },
             scope = viewModelScope,
-            onFinished = { onSessionFinished() },
+            onFinished = { finishSession(SessionEngine.Phase.FINISHED) },
             onTick = { sec ->
                 elapsedSeconds.value = sec
                 recorder?.sample(sec)
             },
-        )
-        engine?.ergEnabled = ergEnabled.value
-        engine?.start()
+        ).also {
+            // Must be set before start(): start() pushes the first target
+            // immediately, and the engine gates that push on ergEnabled.
+            it.ergEnabled = ergEnabled.value
+            it.start()
+        }
         sessionPhase.value = SessionEngine.Phase.RUNNING
         totalSeconds.value = workout?.totalDurationSeconds ?: 0
         if (ergEnabled.value) {
@@ -367,22 +381,36 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         sessionPhase.value = SessionEngine.Phase.RUNNING
     }
 
-    fun stopWorkout() {
+    /**
+     * Stops the ride and writes the CSV.
+     *
+     * The final phase is [SessionEngine.Phase.IDLE] and the elapsed time is
+     * kept (not reset) so the finished ride's curves stay on screen until the
+     * next Start.
+     */
+    fun stopWorkout() = finishSession(SessionEngine.Phase.IDLE)
+
+    /**
+     * Single exit point for a ride — reached both by the user tapping Stop and
+     * by the engine hitting the end of the course. Keeping one path means the
+     * CSV is always written exactly once: previously both callers nulled the
+     * recorder independently, so stopping on the very last second could drop
+     * the whole recording.
+     */
+    private fun finishSession(finalPhase: SessionEngine.Phase) {
+        if (engine == null && recorder == null) return
         engine?.stop()
         engine = null
-        recorder?.stop()
+        val rec = recorder
         recorder = null
-        sessionPhase.value = SessionEngine.Phase.IDLE
-        elapsedSeconds.value = 0
+        sessionPhase.value = finalPhase
         currentTargetWatts.value = null
-        viewModelScope.launch { deviceManager.stopWorkout() }
-    }
-
-    private fun onSessionFinished() {
-        sessionPhase.value = SessionEngine.Phase.FINISHED
-        recorder?.stop()
-        recorder = null
-        currentTargetWatts.value = null
-        viewModelScope.launch { deviceManager.stopWorkout() }
+        viewModelScope.launch {
+            runCatching { rec?.stop() }
+            // Bump the counter only after the file exists, so a History screen
+            // observing it can never list the rides directory too early.
+            recordedRides.value += 1
+            deviceManager.stopWorkout()
+        }
     }
 }

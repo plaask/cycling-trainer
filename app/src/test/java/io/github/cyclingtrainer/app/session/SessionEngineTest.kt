@@ -22,6 +22,27 @@ class SessionEngineTest {
         )
 
     @Test
+    fun `finishing pushes the final tick so the last second is recorded`() = runTest {
+        // The recorder samples from onTick, so a missing tick at t == total
+        // silently truncated every ride's CSV by one row.
+        val ticks = mutableListOf<Int>()
+        val engine = SessionEngine(
+            workout = rampWorkout(), // 20 s total
+            ftpWatts = 200,
+            onTargetPower = { },
+            scope = this,
+            onTick = { ticks.add(it) },
+        )
+        engine.start()
+        runCurrent()
+        advanceTimeBy(25_000)
+        runCurrent()
+        assertEquals(SessionEngine.Phase.FINISHED, engine.phase.value)
+        assertEquals(20, engine.elapsedSeconds.value)
+        assertEquals((1..20).toList(), ticks)
+    }
+
+    @Test
     fun `target power follows ramp and steady`() = runTest {
         val targets = mutableListOf<Int>()
         val engine = SessionEngine(

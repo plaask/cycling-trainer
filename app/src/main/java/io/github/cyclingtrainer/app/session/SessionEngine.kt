@@ -82,6 +82,10 @@ class SessionEngine(
                 val total = totalSeconds
                 if (total > 0 && next >= total) {
                     _elapsedSeconds.value = total
+                    // Record the final second before finishing: onTick drives
+                    // the recorder's sample(), so skipping it here truncated
+                    // every recorded ride by one sample (and its CSV row).
+                    onTick?.invoke(total)
                     pushTarget(total - 1)
                     _phase.value = Phase.FINISHED
                     onFinished?.invoke()
