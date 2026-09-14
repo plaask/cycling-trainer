@@ -74,7 +74,7 @@ class ZwoParserTest {
     }
 
     @Test
-    fun `skips freeride and reads metadata`() {
+    fun `keeps freeride as a zero-target timeline block and reads metadata`() {
         val xml = """
             <workout_file><author>me</author><sportType>bike</sportType>
               <workout>
@@ -85,7 +85,11 @@ class ZwoParserTest {
         """.trimIndent()
         val w = ZwoParser.parse(xml)
         assertEquals("me", w.author)
-        assertEquals(1, w.segments.size)
+        // FreeRide is a real (zero-target) block: it must occupy its time on
+        // the timeline, otherwise every later segment would shift earlier.
+        assertEquals(2, w.segments.size)
+        assertEquals(120, w.totalDurationSeconds)
+        assertEquals("FreeRide", w.segments.first().name)
     }
 
     @Test

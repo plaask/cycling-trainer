@@ -69,6 +69,7 @@ enum class SegmentType {
     INTERVAL, // on-phase of an IntervalsT repeat
     RECOVERY, // off-phase of an IntervalsT repeat
     COOLDOWN,
+    FREE_RIDE, // <FreeRide>: occupies time, no ERG target (power 0)
 }
 
 /**

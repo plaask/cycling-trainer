@@ -52,7 +52,8 @@ object PowerZones {
         return "Z$z"
     }
 
-    /** Descriptive text: "Z3 节奏 76–90% FTP". */
+    /** Descriptive text: "Z3 节奏 76–90%". Deliberately omits the "FTP" unit —
+     *  the train screen prints the live reading's own %FTP right next to it. */
     fun zoneText(ftpWatts: Int, watts: Int): String {
         val z = zoneOf(ftpWatts, watts) ?: return "—"
         val zone = table().first { it.index == z }

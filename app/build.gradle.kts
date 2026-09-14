@@ -1,3 +1,5 @@
+import java.time.Duration
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -38,13 +40,20 @@ android {
     }
 
     sourceSets {
-        // Make the bundled .zwo workouts available to JVM unit tests
+        // Make the repo-root preset .zwo workouts available to JVM unit tests.
+        // The path is relative to THIS module (app/), so the repo root is one
+        // level up — "..", not "../.." (which resolved to D:\coding).
         getByName("test") {
-            // preset .zwo files shared with the repo's preset-workouts/
-            // (test resource only; no longer shipped inside the APK)
-            resources.srcDir("../../preset-workouts")
+            resources.srcDir("../preset-workouts")
         }
     }
+}
+
+// A hung test must fail the build, not block it forever: a spinning test
+// thread used to keep the JVM alive indefinitely (FitWriterTest's FIT walker
+// looped in place on a data message), which made the whole test task hang.
+tasks.withType<Test>().configureEach {
+    timeout.set(Duration.ofMinutes(10))
 }
 
 dependencies {

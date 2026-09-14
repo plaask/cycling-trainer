@@ -39,6 +39,7 @@ private val SteadyColor = Color(0xFF3D9C6E)
 private val IntervalColor = Color(0xFFE07B39)
 private val RecoveryColor = Color(0xFF4A7FC1)
 private val CooldownColor = Color(0xFF8D9BB0)
+private val FreeRideColor = Color(0xFF6E6E6E)
 
 private fun segmentColor(t: SegmentType): Color = when (t) {
     SegmentType.WARMUP -> WarmupColor
@@ -46,6 +47,7 @@ private fun segmentColor(t: SegmentType): Color = when (t) {
     SegmentType.INTERVAL -> IntervalColor
     SegmentType.RECOVERY -> RecoveryColor
     SegmentType.COOLDOWN -> CooldownColor
+    SegmentType.FREE_RIDE -> FreeRideColor
 }
 
 val PowerCurveColor = Color(0xFF2E8B57)

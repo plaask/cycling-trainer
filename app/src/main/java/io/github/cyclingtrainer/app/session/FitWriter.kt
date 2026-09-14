@@ -183,6 +183,18 @@ object FitWriter {
     /** Current local-message-type -> global-message-number mapping. */
     private val localTypes = HashMap<Int, Int>()
 
+    /**
+     * Definition messages already written in this file, keyed by global
+     * message number. A Definition only has to appear once: after that the
+     * local type alone identifies the layout, so repeating it before every
+     * Data message would waste 6 + 3 x fieldCount bytes per record — for
+     * RECORD that is 33 bytes on every single second of the ride.
+     *
+     * (Note: [localTypes] is a field of this object, so [encode] keeps it —
+     * and therefore this set — consistent across calls.)
+     */
+    private val definedMessages = HashSet<Int>()
+
     /** Returns a stable local type (0..15) for [globalMsgNum]. */
     private fun localTypeFor(globalMsgNum: Int): Int {
         localTypes.entries.firstOrNull { it.value == globalMsgNum }?.let { return it.key }
@@ -216,11 +228,11 @@ object FitWriter {
     }
 
     /**
-     * Writes a Definition message (local type [localType]) then a Data
-     * message. Definition header 0x40 | local type; then reserved,
-     * architecture (0 = little endian), global message number LE16, field
-     * count, then per-field (field number, size, base type). FIT requires
-     * fields sorted ascending by field number.
+     * Writes a Data message, preceded by its Definition message the first time
+     * this global message number appears in the file. Definition header
+     * 0x40 | local type; then reserved, architecture (0 = little endian),
+     * global message number LE16, field count, then per-field (field number,
+     * size, base type). FIT requires fields sorted ascending by field number.
      */
     private fun writeMessage(
         out: ByteArrayOutputStream,
@@ -233,15 +245,17 @@ object FitWriter {
             "fields not sorted for message $globalMsgNum"
         }
         val lt = localTypeFor(globalMsgNum)
-        out.write(0x40 or lt) // definition header, local type
-        out.write(0x00) // reserved
-        out.write(0x00) // architecture: little endian
-        putUInt(out, globalMsgNum.toLong(), 2)
-        out.write(fields.size)
-        for (f in fields) {
-            out.write(f.num and 0xFF)
-            out.write(f.size and 0xFF)
-            out.write(f.base and 0xFF)
+        if (definedMessages.add(globalMsgNum)) {
+            out.write(0x40 or lt) // definition header, local type
+            out.write(0x00) // reserved
+            out.write(0x00) // architecture: little endian
+            putUInt(out, globalMsgNum.toLong(), 2)
+            out.write(fields.size)
+            for (f in fields) {
+                out.write(f.num and 0xFF)
+                out.write(f.size and 0xFF)
+                out.write(f.base and 0xFF)
+            }
         }
         writeData(out, lt, fields, values)
     }
@@ -277,6 +291,7 @@ object FitWriter {
     ): ByteArray {
         val out = ByteArrayOutputStream()
         localTypes.clear()
+        definedMessages.clear()
 
         // ----- header (14 bytes, FIT 2.0) -----
         // [0] header size, [1] protocol version, [2..3] profile version LE16,

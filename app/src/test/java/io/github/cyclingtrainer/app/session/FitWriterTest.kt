@@ -51,9 +51,20 @@ class FitWriterTest {
 
         fun fileCrcValid(): Boolean = crc16(bytes.size - 2) == u16(bytes.size - 2)
 
-        /** Walks records returning (isDef, globalMsg, fields) per definition. */
+        /**
+         * Walks every message — definition *and* data — returning
+         * (globalMsg, fieldNumbers) for each definition in file order.
+         *
+         * Data messages carry no length on the wire: their payload size comes
+         * from the definition of the same local type, so the walker must record
+         * it (see [payloadBytes]). Advancing the cursor on a data message is
+         * mandatory — skipping that step spins forever on the first data
+         * message, which is exactly how this helper used to hang the whole
+         * `testDebugUnitTest` run.
+         */
         fun definitions(): List<Pair<Int, List<Int>>> {
-            val localToGlobal = IntArray(16) { -1 }
+            // localType -> total payload bytes of that definition's data messages
+            val payloadBytes = IntArray(16) { -1 }
             val out = ArrayList<Pair<Int, List<Int>>>()
             var i = headerSize
             while (i < dataSize + headerSize) {
@@ -65,16 +76,22 @@ class FitWriterTest {
                     val global = (bytes[i + 3].toInt() and 0xFF) or
                         ((bytes[i + 4].toInt() and 0xFF) shl 8)
                     val n = bytes[i + 5].toInt() and 0xFF
-                    localToGlobal[lt] = global
                     i += 6
                     val fields = ArrayList<Int>()
+                    var size = 0
                     for (k in 0 until n) {
                         fields.add(bytes[i].toInt() and 0xFF)
+                        size += bytes[i + 1].toInt() and 0xFF
                         i += 3
                     }
+                    payloadBytes[lt] = size
                     out.add(global to fields)
                 } else {
-                    i += 0 // data length unknown without definition; skip walk
+                    val size = payloadBytes[lt]
+                    // No definition seen for this local type yet: the file is
+                    // malformed. Stop instead of looping in place.
+                    if (size < 0) break
+                    i += 1 + size // data header byte + payload
                 }
             }
             return out
@@ -96,7 +113,11 @@ class FitWriterTest {
         val bytes = FitWriter.encode(sampleRows(3), 1_000_000L, 42L, "tempo")
         val f = MiniFit(bytes)
         assertEquals(14, f.headerSize)
-        assertEquals("FIT".toByteArray().toList(), bytes.toList().subList(8, 12))
+        // Bytes 8..11 carry ".FIT" (the leading '.' included).
+        assertEquals(
+            ".FIT".toByteArray().toList(),
+            bytes.toList().subList(8, 12),
+        )
         assertTrue(f.fileCrcValid())
         assertEquals(bytes.size - 14 - 2, f.dataSize.toInt())
     }

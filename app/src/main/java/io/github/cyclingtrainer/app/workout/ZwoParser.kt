@@ -14,8 +14,9 @@ import java.io.StringReader
  *  - <IntervalsT Repeat OnDuration OnPower OffDuration OffPower>  unrolled into
  *    `Repeat` alternating ON (interval) / OFF (recovery) segments
  *  - <Cooldown Duration PowerLow PowerHigh Cadence?>   linear ramp high -> low
+ *  - <FreeRide Duration>                                zero-target block that
+ *    still occupies its time, so later segments keep their authored offsets
  *
- * <FreeRide> blocks are ignored (no target power, user rides freely).
  * All target powers in .zwo are fractions of FTP and stay as-is.
  * Durations are seconds. Missing/invalid attributes throw [ZwoParseException]
  * with a descriptive message instead of silently producing a broken workout.
@@ -53,9 +54,9 @@ object ZwoParser {
                     "description" -> if (!inWorkout) description = textOrEmpty(p)
                     "author" -> if (!inWorkout) author = textOrEmpty(p)
                     "sportType" -> if (!inWorkout) sportType = textOrEmpty(p)
-                    "Warmup", "SteadyState", "Cooldown", "IntervalsT" ->
+                    "Warmup", "SteadyState", "Cooldown", "IntervalsT", "FreeRide" ->
                         if (inWorkout) segments += parseTimedSegments(p)
-                    // "FreeRide", "tags", "tag" and everything else: ignored
+                    // "tags", "tag" and everything else: ignored
                 }
                 XmlPullParser.END_TAG -> if (p.name == "workout") inWorkout = false
             }
@@ -124,6 +125,20 @@ object ZwoParser {
                         type = SegmentType.STEADY_STATE,
                         durationSeconds = duration,
                         powerStart = power, powerEnd = power,
+                        cadence = cadence,
+                    )
+                )
+            }
+            // FreeRide has no target power, but it still occupies time. It is
+            // kept as a zero-target block so every later segment stays at its
+            // authored offset instead of shifting earlier on the timeline.
+            "FreeRide" -> {
+                val duration = intAttr(attrs, "Duration", p.name)
+                listOf(
+                    WorkoutSegment(
+                        name = "FreeRide", type = SegmentType.FREE_RIDE,
+                        durationSeconds = duration,
+                        powerStart = 0.0, powerEnd = 0.0,
                         cadence = cadence,
                     )
                 )

@@ -32,7 +32,8 @@ class ZoneCalibrationTest {
         // table starts at 0 % so 0 W is Z1
         assertEquals(1, PowerZones.zoneOf(ftp, 0))
         assertNull(PowerZones.zoneOf(0, 100)) // no FTP configured
-        assertEquals("Z1 主动恢复 0–55% FTP", PowerZones.zoneText(ftp, 50))
+        // zoneText carries no unit suffix: the UI appends the live %FTP itself
+        assertEquals("Z1 主动恢复 0–55%", PowerZones.zoneText(ftp, 50))
     }
 
     // ---- HR LTHR: percentages of the configured LTHR are authoritative
