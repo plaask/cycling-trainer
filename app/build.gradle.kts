@@ -19,6 +19,15 @@ android {
         versionName = "0.3.1"
         // The settings screen shows BuildConfig.VERSION_NAME, so this is the
         // single place the app version lives.
+
+        // Only arm64 devices are supported. This is about hygiene and install
+        // size, NOT app size: the APK's only native library is a 10 KB copy of
+        // libandroidx.graphics.path.so, so dropping the other three ABIs saves
+        // ~27 KB out of 23.5 MB. It also removes the silent failure mode where
+        // a 32-bit device installs fine and then fails in a native call.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     buildTypes {
