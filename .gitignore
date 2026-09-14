@@ -15,4 +15,7 @@ build/
 # Keys: never commit signing material (the debug keystore lives in .android/)
 *.jks
 *.keystore
+# Signing config (password + keystore path); matched at any depth.
+**/key.properties
+**/keystore.properties
 Dl.java

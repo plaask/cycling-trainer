@@ -1,4 +1,5 @@
 import java.time.Duration
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -6,10 +7,45 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+/**
+ * Release signing material lives OUTSIDE the repository, addressed by
+ * app/key.properties (gitignored). Keeping the keystore out of the tree means
+ * it cannot be committed even by an accidental `git add -f`, and the password
+ * is never written into build files.
+ *
+ * The file looks like:
+ *   storeFile=/absolute/path/to/cycling-trainer.jks
+ *   storePassword=...
+ *   keyAlias=cyclingtrainer
+ *   keyPassword=...
+ *
+ * Without it the release build is simply left unsigned instead of failing, so
+ * a fresh clone can still run `assembleDebug` and the tests.
+ */
+val releaseSigning: Properties? = rootProject.file("app/key.properties")
+    .takeIf { it.exists() }
+    ?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
+
 android {
     namespace = "io.github.cyclingtrainer.app"
     compileSdk = 37
     buildToolsVersion = "36.0.0"
+
+    signingConfigs {
+        if (releaseSigning != null) {
+            create("release") {
+                storeFile = file(releaseSigning.getProperty("storeFile"))
+                storePassword = releaseSigning.getProperty("storePassword")
+                keyAlias = releaseSigning.getProperty("keyAlias")
+                keyPassword = releaseSigning.getProperty("keyPassword")
+                // minSdk 33 -> every target device supports APK Signature
+                // Scheme v3, which also carries key-rotation proof.
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "io.github.cyclingtrainer.app"
@@ -42,10 +78,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Signed with the debug key so `assembleRelease` produces an
-            // installable APK for checking size and behaviour. This is NOT a
-            // publishable artifact — wire a real upload key before shipping.
-            signingConfig = signingConfigs.getByName("debug")
+            // Real release key when one is configured; otherwise left unsigned
+            // (an unsigned release APK cannot be installed, which is the safe
+            // default — never fall back to the debug key, whose password is
+            // public and would let anyone sign a fake update).
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     compileOptions {
