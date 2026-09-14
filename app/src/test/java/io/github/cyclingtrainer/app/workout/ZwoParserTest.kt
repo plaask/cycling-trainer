@@ -92,23 +92,46 @@ class ZwoParserTest {
         assertEquals("FreeRide", w.segments.first().name)
     }
 
+    /**
+     * Parses the project's own fixture files from the test classpath, i.e. the
+     * same path a course takes when the app reads a .zwo from a real folder:
+     * bytes -> InputStream -> parser.
+     *
+     * These fixtures live in app/src/test/resources and are written for this
+     * project; the app ships no bundled workouts, and courses are supplied by
+     * the user from a folder they pick.
+     */
     @Test
-    fun `parses all preset workout files`() {
+    fun `parses fixture files from the classpath`() {
         val loader = javaClass.classLoader
-        val names = listOf(
-            "endurance_60min_z2.zwo", "ftp-ramp-test.zwo", "progressive_ramp_45min.zwo",
-            "recovery_30min.zwo", "sweet_spot_3x8.zwo", "tempo_2x15.zwo",
-            "threshold_2x10.zwo", "threshold_overunder_50min.zwo", "vo2max_5x3.zwo",
-        )
-        var total = 0
-        for (n in names) {
-            val res = loader.getResourceAsStream(n)
-            assertNotNull("missing $n", res)
-            val w = ZwoParser.parse(res!!)
-            assertTrue("$n has segments", w.segments.isNotEmpty())
-            assertTrue("$n total>0", w.totalDurationSeconds > 0)
-            total += w.totalDurationSeconds
-        }
-        assertTrue(total > 0)
+
+        val all = loader.getResourceAsStream("fixture-all-elements.zwo")
+        assertNotNull("missing fixture-all-elements.zwo", all)
+        val w = ZwoParser.parse(all!!)
+
+        assertEquals("Fixture All Elements", w.name)
+        assertEquals("test-fixture", w.author)
+        assertEquals("bike", w.sportType)
+        // Warmup, FreeRide, 2x(interval+recovery), SteadyState, Cooldown
+        assertEquals(8, w.segments.size)
+        // 600 + 120 + 2*(60+120) + 120 + 120
+        assertEquals(1320, w.totalDurationSeconds)
+        // A ramp keeps its authored start/end powers.
+        assertEquals(0.40, w.segments.first().powerStart, 1e-9)
+        assertEquals(0.75, w.segments.first().powerEnd, 1e-9)
+        // FreeRide occupies time with no target rather than being dropped.
+        assertEquals(SegmentType.FREE_RIDE, w.segments[1].type)
+        assertEquals(0.0, w.segments[1].powerStart, 1e-9)
+        // An interval pair keeps its on/off powers.
+        assertEquals(1.05, w.segments[2].powerStart, 1e-9)
+        assertEquals(0.55, w.segments[3].powerStart, 1e-9)
+        // Cadence is carried through.
+        assertEquals(90, w.segments[6].cadence)
+
+        val single = ZwoParser.parse(loader.getResourceAsStream("fixture-single-segment.zwo")!!)
+        assertEquals(1, single.segments.size)
+        assertEquals(300, single.totalDurationSeconds)
+        // UTF-8 in the name survives the stream round trip.
+        assertEquals("Fixture 单段课程", single.name)
     }
 }

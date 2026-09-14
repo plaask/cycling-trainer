@@ -9,22 +9,22 @@
 
 | 项 | 路径 |
 |---|---|
-| 工作区（一切都在此） | `D:\coding\cycling-trainer\` |
-| **JDK 21（构建必需）** | `D:\coding\Android\jdk-21\jdk-21.0.12.1+1` |
-| Android SDK | `D:\coding\Android\Sdk`（platform `android-37.0`+junction `android-37`、build-tools 36.0.0） |
-| Android Studio JBR（JDK 25，**不能跑 Gradle 8.10.2**） | `D:\coding\Android\Android Studio\jbr` |
-| 本地 Gradle 发行版 8.10.2（备用） | `C:\Users\11988\AppData\Local\GradleDist\gradle-8.10.2\bin\gradle.bat` |
+| 工作区（一切都在此） | `<repo>\` |
+| **JDK 21（构建必需）** | `<JDK21>` |
+| Android SDK | `<AndroidSDK>`（platform `android-37.0`+junction `android-37`、build-tools 36.0.0） |
+| Android Studio JBR（JDK 25，**不能跑 Gradle 8.10.2**） | `<AndroidStudioJBR>` |
+| 本地 Gradle 发行版 8.10.2（备用） | `<localGradle>\bin\gradle.bat` |
 | APK 产物 | `app\build\outputs\apk\debug\app-debug.apk` |
 | 单测报告 | `app\build\reports\tests\testDebugUnitTest\index.html` |
 
 ## 2. 构建环境（每个新 shell 必须执行）
 
 ```powershell
-$env:JAVA_HOME='D:\coding\Android\jdk-21\jdk-21.0.12.1+1'
+$env:JAVA_HOME='<JDK21>'
 $env:Path="$env:JAVA_HOME\bin;$env:Path"
-$env:GRADLE_USER_HOME='D:\coding\cycling-trainer\.gradle-home'
-$env:ANDROID_USER_HOME='D:\coding\cycling-trainer\.android'   # debug keystore 所在
-$env:TMP='D:\coding\cycling-trainer\.tmp'; $env:TEMP=$env:TMP  # 必须固定！沙箱 TEMP 随机会导致 native dll 失败
+$env:GRADLE_USER_HOME='<repo>\.gradle-home'
+$env:ANDROID_USER_HOME='<repo>\.android'   # debug keystore 所在
+$env:TMP='<repo>\.tmp'; $env:TEMP=$env:TMP  # 必须固定！沙箱 TEMP 随机会导致 native dll 失败
 ```
 
 构建 / 测试：
@@ -39,7 +39,7 @@ $env:TMP='D:\coding\cycling-trainer\.tmp'; $env:TEMP=$env:TMP  # 必须固定！
 - **代理**：FlClash 7890。**Gradle 不要配代理**——本机直连 dl.google.com 正常（Java TLS 可用），走代理反而握手失败。GitHub 下载才需要代理（用 JBR 的 Java HttpClient 或 Git 自带 OpenSSL curl；PowerShell/curl schannel 在本机 TLS 全挂）。
 - **SDK platform**：目录名 `android-37.0`；已建 junction `android-37`，且已把 `source.properties` 与 `package.xml` 里的 `ApiLevel=37.0`/`<api-level>37.0</api-level>` 修为 `37`。**别删 junction、别还原这两个文件**。
 - **buildToolsVersion = "36.0.0"** 已在 `app/build.gradle.kts` 显式指定（AGP 默认要 34 且 `~/.android` 不可写会下载失败）。
-- AGP 每次构建会尝试写 `C:\Users\11988\.android\cache` 拉 SDK 清单并报 `NoSuchFileException` 噪音——**无害，忽略**。
+- AGP 每次构建会尝试写 `<userHome>\.android\cache` 拉 SDK 清单并报 `NoSuchFileException` 噪音——**无害，忽略**。
 - 技术栈锁定：AGP 8.7.3 / Kotlin 2.0.21 / Compose BOM 2024.12.01 / Gradle 8.10.2 / minSdk 33 / target 37。JDK 25(JBR) 不兼容 Gradle 8.10.2，勿用。
 
 ## 4. 代码结构（已实现）
@@ -80,8 +80,8 @@ app/src/main/java/io/github/cyclingtrainer/app/
     ├── Screen.kt / theme/Theme.kt
 ```
 
-- **课程来源**：不再内置 assets。预设 9 个 .zwo 放仓库根 `preset-workouts/`（含 README）；App 内由用户通过系统文件夹选择器授权一次（Documents/CyclingTrainer），URI 持久化，每次启动自动读取。test sourceSet 把 `../../preset-workouts` 挂为测试资源（见 app/build.gradle.kts）。
-- 单测：`app/src/test/...`（ZwoParserTest / BtParsersTest / FecParsersTest / SessionEngineTest / FitWriterTest）。
+- **课程来源**：不内置任何 assets，仓库也不含课程文件。用户通过系统文件夹选择器授权一次（Documents/CyclingTrainer），URI 持久化，每次启动自动读取。测试用的 `.zwo` 是项目自写的固件，放在 `app/src/test/resources/`（默认位置，不再挂载仓库根目录）。
+- 单测：`app/src/test/...`（ZwoParserTest / BtParsersTest / FecParsersTest / FreshValueTest / SessionEngineTest / RideRecorderTest / FitWriterTest / ZoneCalibrationTest，共 46 个）。
 - 骑行记录 CSV 名称格式 `yyyy-MM-dd_HH-mm-ss_<课程名>.csv`；FIT 导出到系统 `Download/CyclingTrainer/`。
 
 ## 5. 下一步待办（真机联调，需用户参与）
@@ -177,7 +177,7 @@ app/src/main/java/io/github/cyclingtrainer/app/
 6. 课程页卡片直接内嵌直方图；warmup/cooldown 等 ramp 段画**横置直角梯形**（不是矩形）。
 
 **后续补充需求**：
-- 课程库改为**外部文件夹**（Documents/CyclingTrainer 放 .zwo，App 内"选择课程文件夹"授权一次即每次启动自动读取），**不再内置 assets 课程**（预设文件挪到仓库根 `preset-workouts/` 供复制）；
+- 课程库改为**外部文件夹**（Documents/CyclingTrainer 放 .zwo，App 内"选择课程文件夹"授权一次即每次启动自动读取），**不内置 assets 课程**（仓库也不含课程文件；原 `preset-workouts/` 已于开源准备时删除，测试改用自写固件）；
 - 历史页加**删除**（只删本机 CSV，不动已导出的 FIT）；导出失败弹真实原因、成功 Toast；
 - 导出目标改为公共 `Download/CyclingTrainer/`（MediaStore，无需权限），重复导出覆盖旧文件。
 
@@ -227,7 +227,7 @@ app/src/main/java/io/github/cyclingtrainer/app/
 | 编号 | 内容 |
 |---|---|
 | A1 | `FitWriterTest` 走查器死循环（挂起真因）+ Test 任务 10 分钟超时 |
-| — | 测试资源路径 `../../preset-workouts` → `../preset-workouts`（原来指向仓库外） |
+| — | 测试资源路径定位错误（原指向仓库外）；改为项目自写固件放 `app/src/test/resources/` |
 | — | `FitWriter` 每条 RECORD 都重发 definition（每秒浪费 33 字节）→ 每类只发一次 |
 | A10 | `<FreeRide>` 不再被丢弃：新增 `SegmentType.FREE_RIDE`，占住时间轴 |
 | A3 | 引擎终点补 `onTick(total)`，课程不再少记最后一秒 |

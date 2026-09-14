@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Test fixture written for this project. Not copied from any workout library:
+  every element type the parser supports appears exactly once, with values
+  chosen only to make the expected parse result easy to assert.
+
+  Expected: 8 segments / 1320 s
+    Warmup      600 s  0.40 -> 0.75
+    FreeRide    120 s  no target
+    IntervalsT  2 x (60 s 1.05 / 120 s 0.55)  = 360 s
+    SteadyState 120 s  0.88  cadence 90
+    Cooldown    120 s  0.70 -> 0.40
+-->
+<workout_file>
+    <author>test-fixture</author>
+    <name>Fixture All Elements</name>
+    <description>Structural fixture covering warmup, freeride, intervals, steady state and cooldown.</description>
+    <sportType>bike</sportType>
+    <tags/>
+    <workout>
+        <Warmup Duration="600" PowerLow="0.40" PowerHigh="0.75"/>
+        <FreeRide Duration="120" FlatRoad="1"/>
+        <IntervalsT Repeat="2" OnDuration="60" OnPower="1.05" OffDuration="120" OffPower="0.55"/>
+        <SteadyState Duration="120" Power="0.88" Cadence="90"/>
+        <Cooldown Duration="120" PowerLow="0.70" PowerHigh="0.40"/>
+    </workout>
+</workout_file>

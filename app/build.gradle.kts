@@ -62,14 +62,9 @@ android {
         buildConfig = true
     }
 
-    sourceSets {
-        // Make the repo-root preset .zwo workouts available to JVM unit tests.
-        // The path is relative to THIS module (app/), so the repo root is one
-        // level up — "..", not "../.." (which resolved to D:\coding).
-        getByName("test") {
-            resources.srcDir("../preset-workouts")
-        }
-    }
+    // Test fixtures live in app/src/test/resources (the default location); the
+    // app ships no bundled workouts. Courses come from a folder the user picks
+    // via the system directory picker (see workout/CourseSource.kt).
 
     lint {
         // lintVitalAnalyzeRelease downloads a lint model and fails on this

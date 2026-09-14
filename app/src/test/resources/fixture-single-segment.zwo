@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Test fixture written for this project: a minimal but complete course file,
+  used to check that a single-segment file parses from a real stream (not just
+  from a string) and that the UTF-8 workout name survives the round trip.
+
+  Expected: 1 segment / 300 s at 0.95 FTP.
+-->
+<workout_file>
+    <author>test-fixture</author>
+    <name>Fixture 单段课程</name>
+    <description>最小可用的课程文件。</description>
+    <sportType>bike</sportType>
+    <workout>
+        <SteadyState Duration="300" Power="0.95"/>
+    </workout>
+</workout_file>

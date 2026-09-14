@@ -69,7 +69,7 @@ tasks.withType<Test>().configureEach {
 
 **顺带**：`.gradle-home/daemon/8.10.2/daemon-*.out.log` 里有
 `NativeException: Couldn't open current thread, error = 5`（file watcher 起不来）与
-`Unable to initialize metrics ... C:\Users\11988\.android`（无害噪音）。
+`Unable to initialize metrics ... <userHome>\.android`（无害噪音）。
 watcher 报错可以用 `--no-watch-fs` 规避。
 
 ### A2. `FitWriterTest` 曾有 4/5 失败（FIT 导出整体不可用）——已确认修复，但需要回归验证
@@ -342,6 +342,8 @@ BLE 链路与 1Hz 计时都不受保护；进程被回收则 A5 的数据丢失�
 - 仓库根**没有 `.git`**（`git status` → not a git repository），但文档声称 GPL-3.0、
   且有 `.gitignore`。没有版本历史是这次"修了又坏、坏了又修"的根因之一 —— 建议第一件事就 `git init`。
 - 预设课程要从 `preset-workouts/` 手动拷到 `Documents/CyclingTrainer`，没有"导入预设"入口。
+  （**已处理**：开源准备时整个 `preset-workouts/` 已删除——那 9 个文件的授权来源无法核实；
+  课程改为完全由用户自备，测试改用项目自写固件。）
 
 ---
 
@@ -471,7 +473,7 @@ data class RideSample(
 | `FtmsTrainer.hasControl` / `requestWithTimeout` | 只写不读 |
 | `AppViewModel.sessionJob` | 声明 + 读，从不赋值（A6） |
 | `MainActivity` 权限数组 | 与 `Permissions.required` 重复（B11） |
-| `preset-workouts/README.md` | 存在；但没有把预设导入 App 的入口 |
+| `preset-workouts/` | 整目录已删除（授权来源不可核实）；不再需要"导入预设"入口 |
 
 ---
 
@@ -494,11 +496,11 @@ data class RideSample(
 ## F. 本次审查做过的实测（可复现）
 
 ```powershell
-$env:JAVA_HOME='D:\coding\Android\jdk-21\jdk-21.0.12.1+1'
+$env:JAVA_HOME='<JDK21>'
 $env:Path="$env:JAVA_HOME\bin;$env:Path"
-$env:GRADLE_USER_HOME='D:\coding\cycling-trainer\.gradle-home'
-$env:ANDROID_USER_HOME='D:\coding\cycling-trainer\.android'
-$env:TMP='D:\coding\cycling-trainer\.tmp'; $env:TEMP=$env:TMP
+$env:GRADLE_USER_HOME='<repo>\.gradle-home'
+$env:ANDROID_USER_HOME='<repo>\.android'
+$env:TMP='<repo>\.tmp'; $env:TEMP=$env:TMP
 
 .\gradlew.bat :app:testDebugUnitTest --console=plain --no-daemon   # → 挂起（A1）
 & "$env:JAVA_HOME\bin\jstack.exe" <test worker pid>                # → 定位到 FitWriterTest.kt:77
@@ -517,11 +519,11 @@ $env:TMP='D:\coding\cycling-trainer\.tmp'; $env:TEMP=$env:TMP
 
 ```powershell
 # 环境（每次新 shell 必设，见 agent.md §2）
-$env:JAVA_HOME='D:\coding\Android\jdk-21\jdk-21.0.12.1+1'
+$env:JAVA_HOME='<JDK21>'
 $env:Path="$env:JAVA_HOME\bin;$env:Path"
-$env:GRADLE_USER_HOME='D:\coding\cycling-trainer\.gradle-home'
-$env:ANDROID_USER_HOME='D:\coding\cycling-trainer\.android'
-$env:TMP='D:\coding\cycling-trainer\.tmp'; $env:TEMP=$env:TMP
+$env:GRADLE_USER_HOME='<repo>\.gradle-home'
+$env:ANDROID_USER_HOME='<repo>\.android'
+$env:TMP='<repo>\.tmp'; $env:TEMP=$env:TMP
 
 # 单测：46 个，约 30 秒跑完（--no-watch-fs 规避本机 file-watcher 原生报错）
 .\gradlew.bat :app:testDebugUnitTest --console=plain --no-daemon --no-watch-fs
