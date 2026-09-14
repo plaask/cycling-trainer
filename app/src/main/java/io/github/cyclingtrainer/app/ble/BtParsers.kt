@@ -9,40 +9,72 @@ import kotlin.math.roundToInt
 object BtParsers {
 
     /**
-     * FTMS Indoor Bike Data (0x2AD2) — 20-byte base frame plus optional fields.
+     * FTMS Indoor Bike Data (0x2AD2) — Flags (u16 LE) followed by the optional
+     * fields in specification order.
      *
-     * Flag bits (little-endian bitmask, byte0):
-     *   0x0001 more data       0x0002 instantaneous power (W, i16)
-     *   0x0004 instantaneous cadence (rpm, u16)   0x0008 total distance
-     *   0x0010 instantaneous speed (km/h * 100, u16)  ... (wheel/gear ignored)
+     * Flag bits (FTMS 1.0 §4.9.1.1, little-endian bitmask):
+     *   0 More Data            0 = Instantaneous Speed IS present (inverted!)
+     *   1 Average Speed        5 Resistance Level (s16)
+     *   2 Instantaneous Cadence (u16)   6 Instantaneous Power (s16)
+     *   3 Average Cadence      7 Average Power (s16)
+     *   4 Total Distance (u24) 8 Expended Energy, 9 Heart Rate, 10 MET,
+     *                          11 Elapsed Time, 12 Remaining Time
      *
-     * @return [PowerCadenceSpeed] or null if the frame has no power and no cadence.
+     * Field order on the wire follows the specification table, NOT bit order:
+     * speed -> average speed -> cadence -> average cadence -> distance ->
+     * resistance -> power -> ... (this parser reads up to power).
+     *
+     * The previous implementation read power first, cadence second, and treated
+     * bit 0 as "skip a byte", which misread every real frame — e.g. the capture
+     * `44 02 52 03 5A 00 08 00 00` (flags 0x0244 = 8.5 km/h, 45 rpm, 8 W)
+     * decoded as 850 W / 90 rpm.
+     *
+     * Cadence resolution: the profile gives Instantaneous Cadence a 0.5 rpm
+     * LSB, so the raw value is halved. Note that some open-source trainers
+     * (KBikeBLE, ESP32-FTMS-Bike) transmit whole rpm instead, which would read
+     * back doubled — but the one real capture available only reconciles when
+     * halved, so the specification wins here.
+     *
+     * @return [PowerCadenceSpeed] or null if the frame is malformed.
      */
     fun parseIndoorBikeData(data: ByteArray): PowerCadenceSpeed? {
         if (data.size < 2) return null
         val flags = (data[0].toInt() and 0xFF) or ((data[1].toInt() and 0xFF) shl 8)
         var pos = 2
-        var power: Int? = null
-        var cadence: Int? = null
-        var speed100: Int? = null
 
-        if (flags and 0x0001 != 0) pos += 1 // reserved (cumulative wheel revolutions etc.)
+        // bit 0 == 0 -> instantaneous speed present (this is the inverted one)
+        val speed100 = if (flags and 0x0001 == 0) readU16(data, pos)?.also { pos += 2 } else null
+        if (flags and 0x0002 != 0) pos += 2 // average speed
+        // Cadence is a u16 with a 0.5 rpm LSB per the profile; the real capture
+        // below only reconciles with nRF Connect's "45.0 rpm" when halved.
+        val cadence = if (flags and 0x0004 != 0) {
+            readU16(data, pos)?.also { pos += 2 }?.let { it / 2 }
+        } else null
+        if (flags and 0x0008 != 0) pos += 2 // average cadence
+        if (flags and 0x0010 != 0) pos += 3 // total distance (u24)
+        if (flags and 0x0020 != 0) pos += 2 // resistance level (s16)
+        val power = if (flags and 0x0040 != 0) readS16(data, pos) else null
 
-        if (flags and 0x0002 != 0) {
-            if (data.size < pos + 2) return null
-            power = (data[pos].toInt() and 0xFF) or ((data[pos + 1].toInt() and 0xFF) shl 8)
-            pos += 2
-        }
-        if (flags and 0x0004 != 0) {
-            if (data.size < pos + 2) return null
-            cadence = (data[pos].toInt() and 0xFF) or ((data[pos + 1].toInt() and 0xFF) shl 8)
-            pos += 2
-        }
-        if (flags and 0x0010 != 0) {
-            if (data.size < pos + 2) return null
-            speed100 = (data[pos].toInt() and 0xFF) or ((data[pos + 1].toInt() and 0xFF) shl 8)
-        }
+        // A field the flags declare as present but that does not fit means the
+        // frame is truncated: report nothing rather than a half-parsed reading.
+        val speedMissing = flags and 0x0001 == 0 && speed100 == null
+        val cadenceMissing = flags and 0x0004 != 0 && cadence == null
+        val powerMissing = flags and 0x0040 != 0 && power == null
+        if (speedMissing || cadenceMissing || powerMissing) return null
+
         return PowerCadenceSpeed(power, cadence, speed100?.let { it / 100.0 })
+    }
+
+    /** Little-endian u16 at [pos], or null when the frame is too short. */
+    private fun readU16(data: ByteArray, pos: Int): Int? {
+        if (pos < 0 || data.size < pos + 2) return null
+        return (data[pos].toInt() and 0xFF) or ((data[pos + 1].toInt() and 0xFF) shl 8)
+    }
+
+    /** Little-endian signed i16 at [pos], or null when the frame is too short. */
+    private fun readS16(data: ByteArray, pos: Int): Int? {
+        val raw = readU16(data, pos) ?: return null
+        return if (raw and 0x8000 != 0) raw - 0x10000 else raw
     }
 
     /**
