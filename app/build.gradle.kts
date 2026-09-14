@@ -70,7 +70,10 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation(libs.androidx.material.icons.extended)
+    // NOTE: material-icons-extended is deliberately NOT used. Its aar is 34 MB
+    // (5 variants x ~2100 icons) and a debug build does not shrink, so it alone
+    // accounted for ~40% of the APK. The handful of icons this app shows all
+    // come from material-icons-core, which material3 already depends on.
     implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

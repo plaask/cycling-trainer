@@ -14,10 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.FitnessCenter
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -32,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.core.content.ContextCompat
 import io.github.cyclingtrainer.app.ui.DevicesScreen
 import io.github.cyclingtrainer.app.ui.HistoryScreen
@@ -105,7 +103,7 @@ fun AppRoot(vm: AppViewModel) {
                             NavigationBarItem(
                                 selected = screen == s,
                                 onClick = { screen = s },
-                                icon = { Icon(s.icon(), contentDescription = s.title) },
+                                icon = { ScreenIcon(s) },
                                 label = { Text(s.title) },
                             )
                         }
@@ -140,9 +138,25 @@ fun AppRoot(vm: AppViewModel) {
     }
 }
 
-private fun Screen.icon() = when (this) {
-    Screen.TRAIN -> Icons.Filled.FitnessCenter
-    Screen.WORKOUTS -> Icons.Filled.List
-    Screen.HISTORY -> Icons.Filled.History
-    Screen.SETTINGS -> Icons.Filled.Settings
+/**
+ * Bottom-bar icon for a destination.
+ *
+ * List/Settings come from material-icons-core (pulled in by material3);
+ * FitnessCenter/History are local vectors in res/drawable, so the 34 MB
+ * material-icons-extended artifact is not needed for four icons.
+ */
+@Composable
+private fun ScreenIcon(s: Screen) {
+    when (s) {
+        Screen.TRAIN -> Icon(
+            painter = painterResource(R.drawable.ic_fitness_center),
+            contentDescription = s.title,
+        )
+        Screen.WORKOUTS -> Icon(Icons.AutoMirrored.Filled.List, contentDescription = s.title)
+        Screen.HISTORY -> Icon(
+            painter = painterResource(R.drawable.ic_history),
+            contentDescription = s.title,
+        )
+        Screen.SETTINGS -> Icon(Icons.Filled.Settings, contentDescription = s.title)
+    }
 }
