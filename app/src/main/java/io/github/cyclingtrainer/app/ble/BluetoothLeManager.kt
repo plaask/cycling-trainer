@@ -455,6 +455,31 @@ class BluetoothLeManager(
             }
         }
 
+        /**
+         * Writes a command without waiting for the control-point indication.
+         *
+         * Used for Set Target Power, which the session pushes once per second:
+         * waiting up to 8 s for an indication while holding the write mutex
+         * makes the ERG target lag behind the course (and lets commands pile
+         * up) on trainers that do not acknowledge every target. The handshake
+         * commands still use [commandAndWait] — those must be confirmed.
+         */
+        suspend fun writeCommand(
+            ch: BluetoothGattCharacteristic, payload: ByteArray,
+        ): Boolean = opMutex.withLock {
+            val g = gatt ?: return@withLock false
+            val wSlot = CompletableDeferred<Boolean>()
+            pendingWrite = wSlot
+            val ok = try {
+                g.writeCharacteristic(ch, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                true
+            } catch (e: Exception) { false }
+            if (!ok) { pendingWrite = null; return@withLock false }
+            val writeOk = withTimeoutOrNull(5000) { wSlot.await() } ?: false
+            pendingWrite = null
+            writeOk
+        }
+
         @SuppressLint("MissingPermission")
         fun dispose() {
             if (!closed.compareAndSet(false, true)) return

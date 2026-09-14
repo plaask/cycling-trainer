@@ -122,9 +122,15 @@ class FtmsTrainer(private val session: BluetoothLeManager.GattSession) {
 
     /**
      * Set Target Power (0x05) with int16 LE watts.
+     *
+     * The write is confirmed, but the control-point indication is not awaited:
+     * the session sends this once per second, and blocking on an unacknowledged
+     * command would stall the ERG target behind the course.
+     *
      * Clamps to the supported power range when known; returns false on failure.
      */
     suspend fun setTargetPower(watts: Int): Boolean {
+        val cp = controlPoint ?: return false
         val w = watts.coerceIn(
             supportedPowerRange?.first ?: 0,
             supportedPowerRange?.second ?: 4000,
@@ -133,6 +139,6 @@ class FtmsTrainer(private val session: BluetoothLeManager.GattSession) {
         payload[0] = FtmsOpcodes.SET_TARGET_POWER.toByte()
         payload[1] = (w and 0xFF).toByte()
         payload[2] = ((w shr 8) and 0xFF).toByte()
-        return request(payload)
+        return session.writeCommand(cp, payload)
     }
 }
