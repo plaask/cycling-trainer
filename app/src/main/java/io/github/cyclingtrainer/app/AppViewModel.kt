@@ -336,6 +336,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             cadenceFlow = mgr.cadenceRpm,
             hrFlow = mgr.heartRateBpm,
             targetFlow = targetChannel,
+            speedFlow = mgr.speedKmh,
             scope = viewModelScope,
         ).also { it.start() }
 

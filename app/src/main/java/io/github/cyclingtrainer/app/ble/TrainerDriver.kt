@@ -16,6 +16,9 @@ interface TrainerDriver {
     /** Live cadence (rpm) from the trainer's own readings. */
     val cadenceFlow: Flow<Int?>
 
+    /** Live speed (km/h) from the trainer's own readings; null if unsupported. */
+    val speedFlow: Flow<Double?>
+
     /** Subscribes to the trainer's measurement channels. */
     suspend fun connect(): Result<Unit>
 
@@ -36,6 +39,7 @@ interface TrainerDriver {
 class FtmsTrainerDriver(private val trainer: FtmsTrainer) : TrainerDriver {
     override val powerFlow = trainer.powerFlow
     override val cadenceFlow = trainer.cadenceFlow
+    override val speedFlow = trainer.speedFlow
     override suspend fun connect() = trainer.connect()
     override val controlAvailable: Boolean get() = trainer.controlPointAvailable
 
@@ -57,6 +61,7 @@ class FtmsTrainerDriver(private val trainer: FtmsTrainer) : TrainerDriver {
 class FecTrainerDriver(private val fec: FecOverBle) : TrainerDriver {
     override val powerFlow = fec.powerFlow
     override val cadenceFlow = fec.cadenceFlow
+    override val speedFlow = fec.speedFlow
     override suspend fun connect() = fec.connect()
     override val controlAvailable: Boolean get() = true
 

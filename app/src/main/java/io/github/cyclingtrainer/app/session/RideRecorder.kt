@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -19,6 +20,11 @@ data class RideSample(
     val cadenceRpm: Double?,
     val heartRateBpm: Int?,
     val targetWatts: Int?,
+    /**
+     * Instantaneous speed. Appended last so positional constructor calls keep
+     * working; the FIT exporter integrates it into a distance.
+     */
+    val speedKmh: Double? = null,
 )
 
 /**
@@ -43,13 +49,14 @@ class RideRecorder(
     private val cadenceFlow: Flow<Double?>,
     private val hrFlow: Flow<Int?>,
     private val targetFlow: Flow<Int?>,
+    private val speedFlow: Flow<Double?> = emptyFlow(),
     private val scope: CoroutineScope,
     /** Injectable so tests can keep writes on their own scheduler. */
     private val writeDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private data class Snap(
         val elapsed: Int, val power: Int?, val cadence: Double?,
-        val hr: Int?, val target: Int?,
+        val hr: Int?, val target: Int?, val speed: Double?,
     )
 
     private val _samples = java.util.ArrayList<Snap>()
@@ -57,7 +64,7 @@ class RideRecorder(
     /** Immutable snapshot of the samples collected so far (for charts). */
     fun snapshot(): List<RideSample> = synchronized(this) {
         _samples.map {
-            RideSample(it.elapsed, it.power, it.cadence, it.hr, it.target)
+            RideSample(it.elapsed, it.power, it.cadence, it.hr, it.target, it.speed)
         }
     }
 
@@ -73,6 +80,7 @@ class RideRecorder(
     private var lastCadence: Double? = null
     private var lastHr: Int? = null
     private var lastTarget: Int? = null
+    private var lastSpeed: Double? = null
 
     fun start() {
         if (started) return
@@ -83,6 +91,7 @@ class RideRecorder(
         scope.launch { cadenceFlow.collect { lastCadence = it } }
         scope.launch { hrFlow.collect { lastHr = it } }
         scope.launch { targetFlow.collect { lastTarget = it } }
+        scope.launch { speedFlow.collect { lastSpeed = it } }
     }
 
     /**
@@ -96,7 +105,7 @@ class RideRecorder(
     fun sample(elapsed: Int) {
         val pending: Pair<File, String>? = synchronized(this) {
             if (finished) return
-            _samples += Snap(elapsed, lastPower, lastCadence, lastHr, lastTarget)
+            _samples += Snap(elapsed, lastPower, lastCadence, lastHr, lastTarget, lastSpeed)
             if (_samples.size % FLUSH_EVERY_SECONDS != 0) return
             // Pin the file name on the first flush so the final write lands in
             // the same file (fileFor() also derives it, but caching is safer).
@@ -144,7 +153,7 @@ class RideRecorder(
         const val FLUSH_EVERY_SECONDS = 30
 
         /** Header shared with [FitExporter], which recognises it and skips it. */
-        const val CSV_HEADER = "elapsed_s,power_w,cadence_rpm,heart_rate_bpm,target_w"
+        const val CSV_HEADER = "elapsed_s,power_w,cadence_rpm,heart_rate_bpm,target_w,speed_kmh"
     }
 }
 
@@ -160,7 +169,8 @@ fun rideSamplesToCsv(samples: List<RideSample>): String {
             .append(s.powerWatts ?: "").append(',')
             .append(s.cadenceRpm?.let { String.format(Locale.US, "%.1f", it) } ?: "").append(',')
             .append(s.heartRateBpm ?: "").append(',')
-            .append(s.targetWatts ?: "").append('\n')
+            .append(s.targetWatts ?: "").append(',')
+            .append(s.speedKmh?.let { String.format(Locale.US, "%.1f", it) } ?: "").append('\n')
     }
     return sb.toString()
 }

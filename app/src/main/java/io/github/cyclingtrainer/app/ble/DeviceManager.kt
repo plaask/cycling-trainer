@@ -48,6 +48,9 @@ class DeviceManager(
     val powerWatts = MutableStateFlow<Int?>(null)
     val heartRateBpm = MutableStateFlow<Int?>(null)
 
+    /** Instantaneous trainer speed in km/h (FE-C page 16 / FTMS 0x2AD2). */
+    val speedKmh = MutableStateFlow<Double?>(null)
+
     // Cadence source priority: CSC preferred, trainer (FTMS/FE-C) fallback.
     private val cscCadence = MutableStateFlow<Double?>(null)
     private val trainerCadence = MutableStateFlow<Double?>(null)
@@ -167,6 +170,11 @@ class DeviceManager(
                 if (c != null) trainerCadence.value = c.toDouble()
             }
         }
+        externalScope.launch {
+            t.speedFlow.collect { s ->
+                if (s != null) speedKmh.value = s
+            }
+        }
     }
 
     /**
@@ -238,6 +246,7 @@ class DeviceManager(
             heartRateBpm.value = null
             cscCadence.value = null
             trainerCadence.value = null
+            speedKmh.value = null
         }
     }
 
@@ -253,6 +262,7 @@ class DeviceManager(
         heartRateBpm.value = null
         cscCadence.value = null
         trainerCadence.value = null
+        speedKmh.value = null
         if (clearError) errorMessage.value = null
     }
 

@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -74,23 +75,23 @@ class RideRecorderTest {
     @Test
     fun `csv serialisation writes header and blank cells for missing sensors`() {
         val rows = listOf(
-            RideSample(0, 150, 85.0, 130, 150),
+            RideSample(0, 150, 85.0, 130, 150, 30.0),
             RideSample(1, null, null, null, null),
-            RideSample(2, 148, 86.4, 132, 150),
+            RideSample(2, 148, 86.4, 132, 150, 31.5),
         )
         val lines = rideSamplesToCsv(rows).trimEnd('\n').lines()
 
         assertEquals(RideRecorder.CSV_HEADER, lines[0])
-        assertEquals("0,150,85.0,130,150", lines[1])
-        assertEquals("1,,,,", lines[2])
-        assertEquals("2,148,86.4,132,150", lines[3])
+        assertEquals("0,150,85.0,130,150,30.0", lines[1])
+        assertEquals("1,,,,,", lines[2])
+        assertEquals("2,148,86.4,132,150,31.5", lines[3])
     }
 
     @Test
     fun `csv is parseable by the FIT exporter`() {
         val rows = listOf(
-            RideSample(0, 150, 85.0, 130, 150),
-            RideSample(1, 152, 86.0, 131, 150),
+            RideSample(0, 150, 85.0, 130, 150, 30.0),
+            RideSample(1, 152, 86.0, 131, 150, 30.0),
         )
         val parsed = FitExporter.parseCsv(rideSamplesToCsv(rows))
 
@@ -98,6 +99,19 @@ class RideRecorderTest {
         assertEquals(150, parsed[0].powerWatts)
         assertEquals(85.0, parsed[0].cadenceRpm!!, 1e-9)
         assertEquals(131, parsed[1].heartRateBpm)
-        assertTrue(parsed[0].targetWatts == 150)
+        assertEquals(150, parsed[0].targetWatts)
+        assertEquals(30.0, parsed[0].speedKmh!!, 1e-9)
+    }
+
+    /** Rides recorded before the speed column existed must still parse. */
+    @Test
+    fun `csv without the speed column still parses`() {
+        val legacy = "elapsed_s,power_w,cadence_rpm,heart_rate_bpm,target_w\n" +
+            "0,150,85.0,130,150\n"
+        val parsed = FitExporter.parseCsv(legacy)
+
+        assertEquals(1, parsed.size)
+        assertEquals(150, parsed[0].powerWatts)
+        assertNull(parsed[0].speedKmh)
     }
 }

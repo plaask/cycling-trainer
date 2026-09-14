@@ -280,6 +280,11 @@ object FitWriter {
      * row's timestamp is start + elapsedSeconds. Rows whose sensors had no
      * reading carry the field's invalid sentinel.
      *
+     * [RideSample.speedKmh] is written as RECORD.speed and integrated across
+     * samples into RECORD.distance, LAP/SESSION.total_distance and the
+     * average/maximum speeds. Rides recorded before the speed column existed
+     * (or without a trainer reading speed) leave all of those invalid.
+     *
      * @param workoutName optional ride label; written to file_id.product_name
      *                    when short enough (20-char cap per profile).
      */
@@ -342,14 +347,29 @@ object FitWriter {
         )
 
         // 4) RECORD rows.
+        // Distance is integrated from the recorded speed (1 Hz samples, so one
+        // sample of v km/h adds v/3.6 metres). Samples without a speed reading
+        // leave distance/speed invalid, which is what importers expect.
+        var distanceMeters = 0.0
         for (s in samples) {
             val ts = startEpochSec + s.elapsedSeconds
             val hr = s.heartRateBpm?.coerceIn(0, 255)?.toLong() ?: INVALID_UINT8.toLong()
             val cad = s.cadenceRpm?.toInt()?.coerceIn(0, 255)?.toLong()
                 ?: INVALID_UINT8.toLong()
             val pow = s.powerWatts?.coerceIn(0, 65535)?.toLong() ?: INVALID_UINT16.toLong()
-            // position_lat/long, altitude, distance, speed left invalid
-            // (indoor ride without GPS); speed would be 0 for stationary.
+            val speedKmh = s.speedKmh
+            val dist: Long
+            val spd: Long
+            if (speedKmh != null) {
+                distanceMeters += speedKmh / 3.6
+                dist = distanceMeters.toLong().coerceIn(0, INVALID_UINT32 - 1)
+                // FIT speed is m/s scaled by 1000 (i.e. mm/s).
+                spd = (speedKmh / 3.6 * 1000.0).toLong().coerceIn(0, INVALID_UINT16.toLong() - 1)
+            } else {
+                dist = INVALID_UINT32
+                spd = INVALID_UINT16.toLong()
+            }
+            // position_lat/long and altitude stay invalid (indoor ride, no GPS).
             writeMessage(
                 out, MSG_RECORD, recordFields,
                 listOf(
@@ -358,13 +378,15 @@ object FitWriter {
                     INVALID_UINT16.toLong(), // altitude
                     hr,
                     cad,
-                    INVALID_UINT32,          // distance
-                    INVALID_UINT16.toLong(), // speed
+                    dist,                    // distance (m)
+                    spd,                     // speed (m/s x1000)
                     pow,
                     ts,
                 )
             )
         }
+        val totalDistanceMeters = distanceMeters.toLong().coerceIn(0, INVALID_UINT32 - 1)
+        val hasDistance = samples.any { it.speedKmh != null }
         val stopTs = startEpochSec + samples.size
         val totalSecs = samples.size.toDouble() // paused gaps omitted; 1 Hz
 
@@ -372,6 +394,14 @@ object FitWriter {
         val lapAvgPow = avgOrInvalid(samples.mapNotNull { it.powerWatts }, INVALID_UINT16)
         val lapMaxPow = samples.mapNotNull { it.powerWatts }.maxOrNull()
             ?.toLong() ?: INVALID_UINT16.toLong()
+        val speeds = samples.mapNotNull { it.speedKmh }
+        // m/s x1000, same convention as RECORD.speed.
+        val avgSpeed = if (speeds.isEmpty()) INVALID_UINT16.toLong()
+        else (speeds.sum() / speeds.size / 3.6 * 1000.0).toLong()
+            .coerceIn(0, INVALID_UINT16.toLong() - 1)
+        val maxSpeed = speeds.maxOrNull()
+            ?.let { (it / 3.6 * 1000.0).toLong().coerceIn(0, INVALID_UINT16.toLong() - 1) }
+            ?: INVALID_UINT16.toLong()
         writeMessage(
             out, MSG_LAP, lapFields,
             listOf(
@@ -380,8 +410,8 @@ object FitWriter {
                 startEpochSec,
                 secsTo1000(totalSecs),
                 secsTo1000(totalSecs),
-                INVALID_UINT32,
-                INVALID_UINT16.toLong(),
+                if (hasDistance) totalDistanceMeters else INVALID_UINT32,
+                avgSpeed,
                 lapAvgPow,
                 lapMaxPow,
                 INTENSITY_ACTIVE.toLong(),
@@ -414,10 +444,10 @@ object FitWriter {
                 SUB_SPORT_GENERIC.toLong(),
                 secsTo1000(totalSecs),
                 secsTo1000(totalSecs),
-                INVALID_UINT32,
+                if (hasDistance) totalDistanceMeters else INVALID_UINT32,
                 0L, // total_calories
-                INVALID_UINT16.toLong(), // avg_speed
-                INVALID_UINT16.toLong(), // max_speed
+                avgSpeed,
+                maxSpeed,
                 avgHr,
                 maxHr,
                 avgCad,

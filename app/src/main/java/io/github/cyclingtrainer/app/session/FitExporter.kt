@@ -48,6 +48,8 @@ object FitExporter {
                 cadenceRpm = parts.getOrNull(2)?.trim()?.toDoubleOrNull(),
                 heartRateBpm = parts.getOrNull(3)?.trim()?.toIntOrNull(),
                 targetWatts = parts.getOrNull(4)?.trim()?.toIntOrNull(),
+                // Added with the speed column; older CSVs simply have no field 5.
+                speedKmh = parts.getOrNull(5)?.trim()?.toDoubleOrNull(),
             )
         }
     }

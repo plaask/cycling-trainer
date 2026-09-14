@@ -57,15 +57,29 @@ class FitWriterTest {
          *
          * Data messages carry no length on the wire: their payload size comes
          * from the definition of the same local type, so the walker must record
-         * it (see [payloadBytes]). Advancing the cursor on a data message is
-         * mandatory — skipping that step spins forever on the first data
-         * message, which is exactly how this helper used to hang the whole
+         * both the payload size and the global message number per local type
+         * (see [payloadBytes] / [globalOf]). Advancing the cursor on a data
+         * message is mandatory — skipping that step spins forever on the first
+         * data message, which is exactly how this helper used to hang the whole
          * `testDebugUnitTest` run.
          */
-        fun definitions(): List<Pair<Int, List<Int>>> {
+        fun definitions(): List<Pair<Int, List<Int>>> = walk()
+            .filterIsInstance<Record.Def>()
+            .map { it.global to it.fieldNumbers }
+
+        /** Data-message payloads, in file order, for assertions on values. */
+        fun dataRecords(globalMsg: Int): List<ByteArray> = walk()
+            .filterIsInstance<Record.Data>()
+            .filter { it.global == globalMsg }
+            .map { it.payload }
+
+        /** Walks every message — definition *and* data — returning
+         *  (globalMsg, fieldNumbers) for each definition in file order. */
+        private fun walk(): List<Record> {
             // localType -> total payload bytes of that definition's data messages
             val payloadBytes = IntArray(16) { -1 }
-            val out = ArrayList<Pair<Int, List<Int>>>()
+            val globalOf = IntArray(16) { -1 }
+            val out = ArrayList<Record>()
             var i = headerSize
             while (i < dataSize + headerSize) {
                 val h = bytes[i].toInt() and 0xFF
@@ -85,16 +99,26 @@ class FitWriterTest {
                         i += 3
                     }
                     payloadBytes[lt] = size
-                    out.add(global to fields)
+                    globalOf[lt] = global
+                    out.add(Record.Def(global, fields))
                 } else {
                     val size = payloadBytes[lt]
                     // No definition seen for this local type yet: the file is
                     // malformed. Stop instead of looping in place.
                     if (size < 0) break
+                    out.add(Record.Data(globalOf[lt], bytes.copyOfRange(i + 1, i + 1 + size)))
                     i += 1 + size // data header byte + payload
                 }
             }
             return out
+        }
+
+        private sealed interface Record {
+            data class Def(val global: Int, val fieldNumbers: List<Int>) : Record
+            data class Data(val global: Int, val payload: ByteArray) : Record {
+                override fun equals(other: Any?) = this === other
+                override fun hashCode() = System.identityHashCode(this)
+            }
         }
     }
 
@@ -141,6 +165,52 @@ class FitWriterTest {
         assertTrue(record.contains(4))
         assertTrue(record.contains(7))
         assertEquals(record.sorted(), record)
+    }
+
+    /** RECORD layout: hr=3 cadence=4 distance=5 speed=6 power=7. */
+    private fun recordField(payload: ByteArray, field: Int): Long {
+        val layout = listOf(4, 4, 2, 1, 1, 4, 2, 2, 4) // sizes in field order
+        val numbers = listOf(0, 1, 2, 3, 4, 5, 6, 7, 253)
+        var off = 0
+        for (idx in numbers.indices) {
+            val size = layout[idx]
+            if (numbers[idx] == field) {
+                var v = 0L
+                for (b in 0 until size) v = v or ((payload[off + b].toLong() and 0xFF) shl (8 * b))
+                return v
+            }
+            off += size
+        }
+        error("field $field not in RECORD")
+    }
+
+    @Test
+    fun `speed is written and distance accumulates across records`() {
+        // 36 km/h for 3 s = 10 m per sample -> distance 10, 20, 30
+        val rows = List(3) { i ->
+            RideSample(
+                elapsedSeconds = i, powerWatts = 200, cadenceRpm = 90.0,
+                heartRateBpm = 140, targetWatts = 200, speedKmh = 36.0,
+            )
+        }
+        val mini = MiniFit(FitWriter.encode(rows, 1_000_000L, 1L, null))
+        val records = mini.dataRecords(20)
+
+        assertEquals(3, records.size)
+        assertEquals(10L, recordField(records[0], 5))
+        assertEquals(20L, recordField(records[1], 5))
+        assertEquals(30L, recordField(records[2], 5))
+        // speed is m/s x1000 (mm/s): 36 km/h = 10 m/s = 10000
+        assertEquals(10000L, recordField(records[0], 6))
+    }
+
+    @Test
+    fun `records without speed keep distance and speed invalid`() {
+        val mini = MiniFit(FitWriter.encode(sampleRows(2), 1_000_000L, 1L, null))
+        for (payload in mini.dataRecords(20)) {
+            assertEquals(FitWriter.INVALID_UINT32, recordField(payload, 5))
+            assertEquals(FitWriter.INVALID_UINT16.toLong(), recordField(payload, 6))
+        }
     }
 
     @Test
