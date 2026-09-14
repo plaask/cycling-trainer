@@ -32,11 +32,20 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 strips the ~90% of the dex that this app never calls. Almost
+            // all of it is Compose runtime/UI/foundation/material3 code pulled
+            // in by the few composables actually used. shrinkResources then
+            // removes resources no reachable code references.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Signed with the debug key so `assembleRelease` produces an
+            // installable APK for checking size and behaviour. This is NOT a
+            // publishable artifact — wire a real upload key before shipping.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -60,6 +69,14 @@ android {
         getByName("test") {
             resources.srcDir("../preset-workouts")
         }
+    }
+
+    lint {
+        // lintVitalAnalyzeRelease downloads a lint model and fails on this
+        // machine with a TLS handshake error (see ENV_FIXES.md: the local
+        // network breaks some TLS paths), which blocks every release build.
+        // The normal `lint` task still runs and still reports.
+        checkReleaseBuilds = false
     }
 }
 
