@@ -1,5 +1,11 @@
 # 代码审查 — Cycling Trainer v0.3.0（2026-09-12）
 
+> **修复状态（2026-09-12 同日）**：A1、A3–A10、B2–B8、B12 及报告中列出的测试/死代码问题均已修复
+> 并提交（`git log`：`9a6c78f` → `33a0012`，6 个提交；基线 tag `v0.3.0-worktree`）。
+> 单测从 30 个增至 **46 个，全绿**；`:app:assembleDebug` 通过，APK badging 为 v0.3.1 + 启动图标。
+> **未做**：C1–C5 架构项与 B9（自动重连）、B10（前台服务）—— 它们是重构/新功能而非缺陷，
+> 详见本文末尾"剩余工作"。下面是审查当时的原始结论，保留作为背景与依据。
+
 审查范围：`app/src` 全量（33 个 main 源文件 + 6 个测试文件，约 4300 行），
 以及对构建环境的实测（JDK 21 + Gradle 8.10.2，实跑 `:app:testDebugUnitTest`）。
 
@@ -504,3 +510,49 @@ $env:TMP='D:\coding\cycling-trainer\.tmp'; $env:TEMP=$env:TMP
   `FitWriterTest` 4 处 `fields not sorted for message 20`；`ZoneCalibrationTest` 缺失。
 - 编译产物是**旧的**：`app-debug.apk`（2026-09-09 01:00）早于最后一批源码改动
   （2026-09-09 01:00:26 等），当前 APK 不能代表工作区代码。
+
+---
+
+## G. 修复后的复现命令（2026-09-12）
+
+```powershell
+# 环境（每次新 shell 必设，见 agent.md §2）
+$env:JAVA_HOME='D:\coding\Android\jdk-21\jdk-21.0.12.1+1'
+$env:Path="$env:JAVA_HOME\bin;$env:Path"
+$env:GRADLE_USER_HOME='D:\coding\cycling-trainer\.gradle-home'
+$env:ANDROID_USER_HOME='D:\coding\cycling-trainer\.android'
+$env:TMP='D:\coding\cycling-trainer\.tmp'; $env:TEMP=$env:TMP
+
+# 单测：46 个，约 30 秒跑完（--no-watch-fs 规避本机 file-watcher 原生报错）
+.\gradlew.bat :app:testDebugUnitTest --console=plain --no-daemon --no-watch-fs
+
+# 报告（8 个测试类）
+# app\build\test-results\testDebugUnitTest\*.xml
+
+# APK
+.\gradlew.bat :app:assembleDebug --console=plain --no-daemon --no-watch-fs
+# → app\build\outputs\apk\debug\app-debug.apk  (v0.3.1, 约 54MB)
+```
+
+若测试再次"挂起"，现在会**10 分钟后失败**而不是永久阻塞（`app/build.gradle.kts` 里的
+`tasks.withType<Test> { timeout }`）。真挂起时用 `jstack <test worker pid>` 定位栈顶。
+
+---
+
+## H. 剩余工作（未做，按建议顺序）
+
+以下都是**重构或新功能**，不是已确认的缺陷。做之前请先在真机上跑一遍 v0.3.1。
+
+| 顺序 | 项 | 说明 | 风险 |
+|---|---|---|---|
+| 1 | C2 UiState 收敛 | `TrainScreen` 现收 13 个 flow 并在 composable 里派生；改成 ViewModel 产出一个不可变 `TrainUiState` | 中：触碰全部 UI 组合，无 instrumentation 测试兜底 |
+| 2 | C1 repository 分层 | settings / course / ride / connection 四个 repository，UI 不再直接读 `deviceManager.*` | 中：同上 |
+| 3 | C4 前台服务 | 会话搬进 `RideSessionService`（`connectedDevice`），顺带用起闲置的 `FOREGROUND_SERVICE*` 权限 | 中高：涉及生命周期与通知，必须真机验 |
+| 4 | B9 自动重连 | 已知设备地址持久化 + 指数退避重连 | 低 |
+| 5 | C3 Zone 去重 | `HrZones` / `PowerZones` 抽成 `ZoneTable` | 低（有 `ZoneCalibrationTest` 兜底） |
+| 6 | C5 BLE 层整理 | `GattSession` 提成顶层类；角色字符串换 `enum class Role`；`deviceKind`/`roleLabel` 合并 | 低-中 |
+| 7 | B11 权限去重 | 三份 BLE 权限判断合成一处 | 低 |
+| 8 | C7 课程库自动刷新 | `ContentObserver` 或回前台重扫 | 低 |
+
+**真机验证仍是硬约束**：A9（FTMS 解析）只对抓包验证过，X2 走 FE-C；A5（增量落盘）、
+A8（ERG 不等 indication）、B6/B7 都只有单测覆盖，需要真机确认。

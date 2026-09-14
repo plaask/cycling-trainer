@@ -217,6 +217,49 @@ app/src/main/java/io/github/cyclingtrainer/app/
 3. **骑行只在 stop() 时落盘**（`RideRecorder`）：崩溃/被杀 = 整趟记录丢失；
    另在"最后一秒按停止"的窗口里 CSV 可能根本不写。
 
+### ✅ 修复落地（2026-09-12，对应 CODE_REVIEW.md）
+
+仓库已 `git init`，基线提交 `e0d09cb`（tag `v0.3.0-worktree`）。之后按审查报告逐项修复，
+每个 Phase 一次提交（`9a6c78f` → `33a0012`，共 6 个提交）。**单测 30 → 46，全绿。**
+
+已修（对应报告编号）：
+
+| 编号 | 内容 |
+|---|---|
+| A1 | `FitWriterTest` 走查器死循环（挂起真因）+ Test 任务 10 分钟超时 |
+| — | 测试资源路径 `../../preset-workouts` → `../preset-workouts`（原来指向仓库外） |
+| — | `FitWriter` 每条 RECORD 都重发 definition（每秒浪费 33 字节）→ 每类只发一次 |
+| A10 | `<FreeRide>` 不再被丢弃：新增 `SegmentType.FREE_RIDE`，占住时间轴 |
+| A3 | 引擎终点补 `onTick(total)`，课程不再少记最后一秒 |
+| A4 | `RideRecorder.stop()` 幂等 + `finishSession()` 单一收尾出口 |
+| A5 | CSV 每 30 秒增量落盘（崩溃/被杀只丢最后几秒） |
+| A6 | 删掉死变量 `sessionJob`，改用会话 phase 做唯一守卫 |
+| A7 | 停止不再清零 `elapsedSeconds`（结束页保留曲线） |
+| A8 | Set Target Power 不再等 8 秒 indication（`GattSession.writeCommand`） |
+| A9 | **FTMS Indoor Bike Data 按规范重写**（bit0 取反 + 字段顺序 + u16 cadence÷2 + 截断帧拒绝） |
+| B2 | 目标功率改用 `StateFlow`（首行 target 不再丢） |
+| B3 | `RideRecorder`/`HistoryScreen` 文件 I/O 移出主线程 |
+| B4 | 历史页在骑行结束后自动刷新（`AppViewModel.recordedRides`） |
+| B6 | 角色连接失败释放 GATT 会话 |
+| B7 | CSC 重订阅判据改为"是否收到过帧" |
+| B8 | 速度/距离接通：CSV 加 `speed_kmh`，FIT 写 distance/speed/avg/max |
+| B5 | 课程身份改用 SAF docId（同名课程不再串台/LazyColumn 重复 key） |
+| B12 | 版本 0.3.1 且设置页读 `BuildConfig`；`suppressUnsupportedCompileSdk=37` |
+| — | 补齐启动图标（之前 `res/` 里根本没有）；删除 8 处死代码 |
+
+**尚未做**（报告里的架构项，见下节）：C1/C2（UiState 收敛）、C4（前台服务）、B9（自动重连）、
+B10（前台服务权限仍闲置）、C3（HrZones/PowerZones 去重）、C5（BLE 层拆类 / Role 枚举）。
+这几项都是**纯重构或新功能**，不是缺陷修复；其中 C2/C4 会大范围改动 UI 组合方式与生命周期。
+
+**验证清单（v0.3.1，真机）**：除原 v0.3.0 清单外，新增——
+拔掉骑行台电源后 3 秒内读数变"—"而非冻结；完成课程后 CSV 行数 = 课程秒数；
+骑行中强杀 App，重启后 CSV 仍有大部分数据；导出 FIT 在 Golden Cheetah / Garmin Connect
+里能看到**距离与速度**；历史页骑完即出现新记录；App 图标正常显示。
+
+**注意**：FTMS 解析已按规范修正（含 `44 02 52 03 5A 00 08 00 00` → 8W/45rpm/8.5km/h 的真实
+抓包用例），但 X2 走 FE-C，**这条路径仍无真机验证过**；若接标准 FTMS 骑行台（Wahoo/Tacx/Elite）
+请优先核对功率与踏频。
+
 **验证清单（v0.3.0）**：连 X2+心率带后互不踢下线；设备页已连接项置顶且有名；连 CSC 后训练页踏频锁定 CSC；ERG 反复开关仍跟随；旋转不丢连接/课程；训练中曲线终点不越界；warmup/cooldown 梯形显示；历史导出→Download/CyclingTrainer/ 可见、可删除 CSV 不动 FIT；课程页选文件夹后 .zwo 自动列出（重启也自动加载）。
 
 ## 6. 协议速查（实现已内嵌，改 BLE 时对照）
