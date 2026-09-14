@@ -134,27 +134,15 @@ object BtParsers {
         val max = (data[2].toInt() and 0xFF) or ((data[3].toInt() and 0xFF) shl 8)
         return min to max
     }
-
-    /** FTMS Feature (0x2ACC): 4 bytes, bit 6 of byte1 (0x40<<8=0x4000?) — see caller. */
-    fun parseFtmsFeatures(data: ByteArray): Long? {
-        if (data.size < 4) return null
-        var v = 0L
-        for (i in 0 until 4) v = v or ((data[i].toLong() and 0xFF) shl (8 * i))
-        return v
-    }
 }
 
 data class PowerCadenceSpeed(
     val powerWatts: Int?,
     val cadenceRpm: Int?,
     val speedKmh: Double?,
-) {
-    val hasUseful: Boolean get() = powerWatts != null || cadenceRpm != null
-}
+)
 
 data class CscCrankState(
     val revolutions: Long? = null,
     val lastEventTime: Int? = null,
 )
-
-fun Int.signed16(): Int = if (this and 0x8000 != 0) this - 0x10000 else this

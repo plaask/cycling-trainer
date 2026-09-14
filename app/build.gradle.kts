@@ -15,8 +15,10 @@ android {
         applicationId = "io.github.cyclingtrainer.app"
         minSdk = 33
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 4
+        versionName = "0.3.1"
+        // The settings screen shows BuildConfig.VERSION_NAME, so this is the
+        // single place the app version lives.
     }
 
     buildTypes {
@@ -37,6 +39,9 @@ android {
     }
     buildFeatures {
         compose = true
+        // AGP 8 defaults this off; the About box reads BuildConfig.VERSION_NAME
+        // so the displayed version follows the build file.
+        buildConfig = true
     }
 
     sourceSets {

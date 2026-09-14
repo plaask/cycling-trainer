@@ -108,7 +108,6 @@ class DeviceManager(
         }
     }.stateIn(externalScope, SharingStarted.Eagerly, "—")
 
-    val trainerReady = MutableStateFlow(false)
     val errorMessage = MutableStateFlow<String?>(null)
 
     private var trainerDriver: TrainerDriver? = null
@@ -154,7 +153,6 @@ class DeviceManager(
                     driver.connect().getOrThrow()
                     trainerAddress.value = address
                     trainerDriver = driver
-                    trainerReady.value = true
                     launchTrainer(driver)
                     watchSession(s, "trainer")
                 }
@@ -230,7 +228,6 @@ class DeviceManager(
                     when (role) {
                         "trainer" -> if (trainerAddress.value == s.address) {
                             trainerAddress.value = null
-                            trainerReady.value = false
                             trainerDriver = null
                             trainerSourceTag.value = "—"
                             clearTrainerReadings()
@@ -301,7 +298,7 @@ class DeviceManager(
     fun disconnectDevice(address: String) {
         if (trainerAddress.value == address) {
             ble.disconnect(address); trainerDriver = null
-            trainerAddress.value = null; trainerReady.value = false; trainerSourceTag.value = "—"
+            trainerAddress.value = null; trainerSourceTag.value = "—"
             clearTrainerReadings()
         }
         if (hrAddress.value == address) {
@@ -318,7 +315,6 @@ class DeviceManager(
         trainerAddress.value = null
         hrAddress.value = null
         cscAddress.value = null
-        trainerReady.value = false
         trainerSourceTag.value = "—"
         clearTrainerReadings()
         hrReading.clear()

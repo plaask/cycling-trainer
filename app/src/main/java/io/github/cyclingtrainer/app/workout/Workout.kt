@@ -23,6 +23,13 @@ data class Workout(
     val sportType: String,
     /** Ordered list of timed segments covering the whole workout, no gaps. */
     val segments: List<WorkoutSegment>,
+    /**
+     * Stable identity of the source file (the SAF document id). Two courses
+     * may legitimately share a display [name]; selecting and listing must not
+     * key off the name or a duplicated file would highlight and collide.
+     * Empty for programs built in code (tests, previews).
+     */
+    val id: String = "",
 ) {
     /** Total duration in seconds. */
     val totalDurationSeconds: Int get() = segments.sumOf { it.durationSeconds }

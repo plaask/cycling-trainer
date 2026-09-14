@@ -81,9 +81,10 @@ fun WorkoutsScreen(
             )
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(workouts, key = { it.name + it.totalDurationSeconds }) { w ->
-                val isSelected = selected?.name == w.name &&
-                    selected.totalDurationSeconds == w.totalDurationSeconds
+            // Keyed by the source document id: a name+duration key can collide
+            // (duplicate course files) and Compose throws on duplicate keys.
+            items(workouts, key = { it.id }) { w ->
+                val isSelected = selected?.id == w.id
                 WorkoutCard(w, selected = isSelected, onClick = { onSelect(w) })
             }
         }

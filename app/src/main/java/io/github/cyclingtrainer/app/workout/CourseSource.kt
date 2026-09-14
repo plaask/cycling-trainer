@@ -21,20 +21,23 @@ object CourseSource {
     fun load(resolver: ContentResolver, treeUri: Uri): List<Workout> {
         val children = listDocuments(resolver, treeUri)
         val out = ArrayList<Workout>(children.size)
-        for ((docId, name) in children) {
-            if (!name.endsWith(".zwo", ignoreCase = true)) continue
-            val fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+        for (child in children) {
+            if (!child.name.endsWith(".zwo", ignoreCase = true)) continue
+            val fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, child.docId)
             runCatching {
                 resolver.openInputStream(fileUri)?.use { ZwoParser.parse(it) }
-            }.getOrNull()?.let { out += it }
+            }.getOrNull()?.let { out += it.copy(id = child.docId) }
         }
         return out.sortedBy { it.name }
     }
 
+    /** One entry in the picked folder: stable document id + display name. */
+    private data class Child(val docId: String, val name: String)
+
     private fun listDocuments(
         resolver: ContentResolver,
         treeUri: Uri,
-    ): List<Pair<String, String>> {
+    ): List<Child> {
         val treeDocId = DocumentsContract.getTreeDocumentId(treeUri) ?: return emptyList()
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, treeDocId)
         val projection = arrayOf(
@@ -45,12 +48,17 @@ object CourseSource {
             resolver.query(childrenUri, projection, null, null, null)?.use { c ->
                 val idCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
                 val nameCol = c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-                val list = ArrayList<Pair<String, String>>()
+                if (idCol < 0) return@use emptyList<Child>()
+                val list = ArrayList<Child>()
                 while (c.moveToNext()) {
-                    val id = if (idCol >= 0) c.getString(idCol) else null ?: continue
+                    // getString returns null for SQL NULL and when the column
+                    // is absent — check both explicitly; mixing it into a
+                    // `?:` chain with a loop control statement is a precedence
+                    // trap that silently skipped rows.
+                    val id = c.getString(idCol)
                     if (id == null) continue
-                    val name = if (nameCol >= 0) c.getString(nameCol) else "" ?: ""
-                    list += id to (name ?: "")
+                    val name = if (nameCol >= 0) c.getString(nameCol).orEmpty() else ""
+                    list += Child(id, name)
                 }
                 list
             } ?: emptyList()

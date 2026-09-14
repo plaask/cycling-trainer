@@ -49,10 +49,6 @@ class FtmsTrainer(private val session: BluetoothLeManager.GattSession) {
         .filter { it.first == GattUuids.FTMS_FITNESS_MACHINE_STATUS }
         .map { if (it.second.isNotEmpty()) it.second[0].toInt() and 0xFF else -1 }
 
-    /** True once control has been acquired. */
-    @Volatile var hasControl: Boolean = false
-        private set
-
     /** Whether this trainer exposes an FTMS Control Point at all (ERG-capable). */
     val controlPointAvailable: Boolean
         get() = controlPoint != null
@@ -66,7 +62,7 @@ class FtmsTrainer(private val session: BluetoothLeManager.GattSession) {
      *  not a usable FTMS trainer. The Control Point (0x2AD9) is optional:
      *  some trainers expose measurement data but not (yet) ERG control, and
      *  they should still connect for power/cadence instead of failing hard.
-     *  [hasControl] then reports whether ERG control is available.
+     *  [controlPointAvailable] then reports whether ERG control is available.
      */
     suspend fun connect(): Result<Unit> = runCatching {
         val g = session
@@ -112,11 +108,8 @@ class FtmsTrainer(private val session: BluetoothLeManager.GattSession) {
     }
 
     /** Request Control (0x00). */
-    suspend fun requestControl(): Boolean {
-        val ok = request(byteArrayOf(FtmsOpcodes.REQUEST_CONTROL.toByte()))
-        if (ok) hasControl = true
-        return ok
-    }
+    suspend fun requestControl(): Boolean =
+        request(byteArrayOf(FtmsOpcodes.REQUEST_CONTROL.toByte()))
 
     /** Reset (0x01). */
     suspend fun reset(): Boolean = request(byteArrayOf(FtmsOpcodes.RESET.toByte()))
@@ -141,13 +134,5 @@ class FtmsTrainer(private val session: BluetoothLeManager.GattSession) {
         payload[1] = (w and 0xFF).toByte()
         payload[2] = ((w shr 8) and 0xFF).toByte()
         return request(payload)
-    }
-
-    /** Sends a control request and awaits up to [timeoutMs] for an indication. */
-    suspend fun requestWithTimeout(
-        payload: ByteArray, timeoutMs: Long = 8000,
-    ): ByteArray? {
-        val cp = controlPoint ?: return null
-        return session.commandAndWait(cp, payload, timeoutMs)
     }
 }

@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.cyclingtrainer.app.AppViewModel
+import io.github.cyclingtrainer.app.BuildConfig
 import io.github.cyclingtrainer.app.session.HrZones
 import io.github.cyclingtrainer.app.ui.theme.ThemeMode
 
@@ -193,7 +194,9 @@ fun SettingsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                     Column(Modifier.padding(12.dp)) {
                         Text("关于", fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(4.dp))
-                        Text("Cycling Trainer v0.3.0 · GPL-3.0",
+                        // Read from the build so the About box can never drift
+                        // from app/build.gradle.kts again.
+                        Text("Cycling Trainer v${BuildConfig.VERSION_NAME} · GPL-3.0",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }

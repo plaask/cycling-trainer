@@ -86,11 +86,14 @@ fun AppRoot(vm: AppViewModel) {
     var screen by rememberSaveable { mutableStateOf(Screen.TRAIN) }
     var showDevices by rememberSaveable { mutableStateOf(false) }
     // Selection survives rotation: keep the course identity in saved state,
-    // and re-resolve it against the (re)loaded library when it arrives.
+    // and re-resolve it against the (re)loaded library when it arrives. Keyed
+    // by the source document id rather than the display name, because two
+    // courses may share a name — keying by name selected both at once.
     var selectedWorkoutId by rememberSaveable { mutableStateOf<String?>(null) }
     val workouts by vm.workouts.collectAsState()
     val selectedWorkout = remember(selectedWorkoutId, workouts) {
-        workouts.firstOrNull { it.name == selectedWorkoutId }
+        val wanted = selectedWorkoutId ?: return@remember null
+        workouts.firstOrNull { it.id == wanted }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -120,7 +123,7 @@ fun AppRoot(vm: AppViewModel) {
                 Screen.WORKOUTS -> WorkoutsScreen(
                     vm = vm,
                     selected = selectedWorkout,
-                    onSelect = { w -> selectedWorkoutId = w.name },
+                    onSelect = { w -> selectedWorkoutId = w.id },
                     modifier = Modifier.padding(padding),
                 )
                 Screen.HISTORY -> HistoryScreen(vm, Modifier.padding(padding))
