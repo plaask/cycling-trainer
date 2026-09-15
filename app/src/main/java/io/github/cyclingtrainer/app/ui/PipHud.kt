@@ -1,6 +1,5 @@
 package io.github.cyclingtrainer.app.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,13 +11,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -51,104 +50,113 @@ fun PipHud(vm: AppViewModel, modifier: Modifier = Modifier) {
 
     val course = totalSec > 0
 
-    Box(
-        modifier
+    // A Surface, not a plain Box with .background(): besides painting the
+    // opaque card that hides the UI underneath, it is what publishes the
+    // theme's content colour to everything inside. Without it the readouts
+    // fell back to LocalContentColor's black default — invisible on the dark
+    // background of the dark scheme, while their labels (which name a colour
+    // explicitly) stayed readable.
+    Surface(
+        modifier = modifier
             .fillMaxSize()
-            // Opaque: the full UI is still composed underneath.
-            .background(MaterialTheme.colorScheme.background)
-            // ...and still hit-testable underneath. Taps in a PiP window are
-            // normally swallowed by the system's own handler (the one that
-            // opens the PiP menu), but if one is ever delivered to the window
-            // it must not land on the invisible Pause/Stop buttons behind this
-            // card, so swallow everything here.
+            // The full UI stays composed — and hit-testable — underneath.
+            // Taps in a PiP window are normally swallowed by the system's own
+            // handler (the one that opens the PiP menu), but if one is ever
+            // delivered to the window it must not land on the invisible
+            // Pause/Stop buttons behind this card, so swallow everything here.
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
                         awaitPointerEvent().changes.forEach { it.consume() }
                     }
                 }
-            }
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            },
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
-        val rideOver = phase == SessionEngine.Phase.IDLE || phase == SessionEngine.Phase.FINISHED
-        if (rideOver) {
-            // The window outlives the ride when the athlete leaves it open
-            // after the course ends; stale numbers would be worse than none.
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    if (phase == SessionEngine.Phase.FINISHED) "训练已结束" else "训练未开始",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        } else {
-            Column(
-                Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.SpaceBetween,
-            ) {
-                // ---- top: what the course asks, or free ride ----
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (course) {
-                        val pct = target?.let { Math.round(it.toDouble() / ftp.coerceAtLeast(1) * 100) }
-                        Text(
-                            "${target ?: "—"} W",
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = if (target != null) MaterialTheme.colorScheme.primary
-                            else Color.Gray,
-                        )
-                        if (pct != null) {
-                            Spacer(Modifier.padding(start = 8.dp))
+        Box(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp)) {
+            val rideOver = phase == SessionEngine.Phase.IDLE || phase == SessionEngine.Phase.FINISHED
+            if (rideOver) {
+                // The window outlives the ride when the athlete leaves it open
+                // after the course ends; stale numbers would be worse than none.
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        if (phase == SessionEngine.Phase.FINISHED) "训练已结束" else "训练未开始",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                Column(
+                    Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    // ---- top: what the course asks, or free ride ----
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (course) {
+                            val pct = target?.let {
+                                Math.round(it.toDouble() / ftp.coerceAtLeast(1) * 100)
+                            }
                             Text(
-                                "$pct% FTP",
-                                style = MaterialTheme.typography.labelMedium,
+                                "${target ?: "—"} W",
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (target != null) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (pct != null) {
+                                Spacer(Modifier.padding(start = 8.dp))
+                                Text(
+                                    "$pct% FTP",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        } else {
+                            Text(
+                                "自由骑行",
+                                fontSize = 26.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                    } else {
+                        Spacer(Modifier.weight(1f))
                         Text(
-                            "自由骑行",
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = Color.Gray,
+                            phaseLabel(phase),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
                         )
                     }
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        phaseLabel(phase),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
 
-                // ---- middle: live readings ----
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                ) {
-                    PipMetric("功率", power?.toString() ?: "—", "W")
-                    PipMetric("心率", hr?.toString() ?: "—", "bpm")
-                    PipMetric("踏频", cadence?.let { "%.0f".format(Locale.US, it) } ?: "—", "rpm")
-                }
-
-                // ---- bottom: progress + clock ----
-                Column(Modifier.fillMaxWidth()) {
-                    if (course) {
-                        LinearProgressIndicator(
-                            progress = { (elapsed.toFloat() / totalSec).coerceIn(0f, 1f) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.height(4.dp))
+                    // ---- middle: live readings ----
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                    ) {
+                        PipMetric("功率", power?.toString() ?: "—", "W")
+                        PipMetric("心率", hr?.toString() ?: "—", "bpm")
+                        PipMetric("踏频", cadence?.let { "%.0f".format(Locale.US, it) } ?: "—", "rpm")
                     }
-                    Text(
-                        if (course) timeStr(elapsed) + " / " + timeStr(totalSec)
-                        else timeStr(elapsed) + " 已骑",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+
+                    // ---- bottom: progress + clock ----
+                    Column(Modifier.fillMaxWidth()) {
+                        if (course) {
+                            LinearProgressIndicator(
+                                progress = { (elapsed.toFloat() / totalSec).coerceIn(0f, 1f) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.height(4.dp))
+                        }
+                        Text(
+                            if (course) timeStr(elapsed) + " / " + timeStr(totalSec)
+                            else timeStr(elapsed) + " 已骑",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
@@ -163,6 +171,8 @@ private fun PipMetric(label: String, value: String, unit: String) {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        // Colour comes from the Surface above (onBackground): the readouts are
+        // the brightest thing in the window and must follow the colour scheme.
         Text(
             value,
             fontSize = 26.sp,

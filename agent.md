@@ -302,6 +302,18 @@ B10（前台服务权限仍闲置）、C3（HrZones/PowerZones 去重）、C5（
 未做（有意）：`setCloseAction` 映射成「停止并保存」、`sourceRectHint`（HUD 铺满整窗，源矩形无意义）、
 `setTitle/setSubtitle`（API 36，只为折叠态文案）、设置页的画中画开关。
 
+**深色模式内容色（真机反馈后补）**：`MaterialTheme` 只提供配色表，**不提供 `LocalContentColor`**——
+那是 `Surface` 干的活（已用 javap 核对 material3 1.3.1：`SurfaceKt.Surface` 调 `contentColorFor(...)` +
+提供 `LocalContentColor`，`ScaffoldKt` 内部也是这么包一层 `Surface`）。所以「不写 color 的 Text/Icon」
+在 Scaffold 里正常，**一旦画到 Scaffold 外面就会退回 `LocalContentColor` 的黑色默认值**：
+本次踩中的是 `PipHud`（功率/心率/踏频三个读数黑字配深色背景 = 看不见；标签因为显式写了颜色反而正常）
+和 `DevicesScreen`（标题「设备连接」、返回箭头、「扫描中…」；卡片内的文字没事，因为 `Card` 自己就是 Surface）。
+三处修法：`PipHud`、`DevicesScreen` 各自改用 `Surface(color = background, contentColor = onBackground)`
+（顺带就是它们需要的那个不透明底），并在 `MainActivity.setContent` 最外层也包一层同款 `Surface` 作为
+**结构性兜底**——以后任何画到 Scaffold 外面的东西都不会再踩这个坑。另把 `TrainScreen` 里两处
+硬编码 `Color.Gray`（占位「—」和「自由骑行」）换成 `onSurfaceVariant`，跟随主题。
+**以后加浮层/子页：用 `Surface` 起手，不要用 `Box + background()`。**
+
 **真机验证清单（v0.4.0）**：
 1. 连骑行台 → 开始自由骑行 → 按 Home：出现画中画小窗，功率/心率/踏频跟随实际读数、计时在走；
 2. 点小窗 → 菜单有「暂停」→ 点后窗口显示「已暂停」且计时停住 → 菜单变「继续」→ 点回后计时续走、ERG 恢复；
@@ -310,7 +322,9 @@ B10（前台服务权限仍闲置）、C3（HrZones/PowerZones 去重）、C5（
 5. 骑行到课程结束 → 窗口内容变「训练已结束」；
 6. 骑行中切到别的 App（不是回桌面）同样进画中画；
 7. 回归：旋转屏幕不丢连接/课程；进出设置页、设备页正常；
-8. Android 15 机型：进入画中画的过程没有「完整界面被压小」的闪帧。
+8. Android 15 机型：进入画中画的过程没有「完整界面被压小」的闪帧；
+9. 切到**暗黑**主题后：画中画窗口里的功率/心率/踏频数字是浅色的（不是黑字）、
+   设备子页的标题/返回箭头/「扫描中…」可见、训练页占位「—」与「自由骑行」跟随主题。
 
 ## 6. 协议速查（实现已内嵌，改 BLE 时对照）
 

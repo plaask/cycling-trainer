@@ -28,9 +28,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -128,10 +130,24 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by vm.themeMode.collectAsState()
             CyclingTrainerTheme(themeMode = themeMode) {
-                Box(Modifier.fillMaxSize()) {
-                    // Always composed, PiP or not — see [inPip].
-                    AppRoot(vm)
-                    if (inPip.value) PipHud(vm, Modifier.fillMaxSize())
+                // One Surface for the whole window: it paints the scheme's
+                // background and — more importantly — publishes the scheme's
+                // *content* colour to every composable that does not name a
+                // colour itself. MaterialTheme alone does not do that; the
+                // Scaffold does it for the tab pages, but whatever is drawn
+                // outside the Scaffold (the device sub-page, the PiP HUD) used
+                // to fall back to LocalContentColor's black default and turned
+                // invisible on a dark background.
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onBackground,
+                ) {
+                    Box(Modifier.fillMaxSize()) {
+                        // Always composed, PiP or not — see [inPip].
+                        AppRoot(vm)
+                        if (inPip.value) PipHud(vm, Modifier.fillMaxSize())
+                    }
                 }
             }
         }

@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -131,121 +131,131 @@ fun DevicesScreen(
         map.values.toList()
     }
 
-    Column(
-        // Opaque full-screen background: this screen overlays the train page
-        // (Bluetooth entry), so it must not show the content underneath.
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    // A Surface, not a bare Column with .background(): this screen overlays the
+    // train page, so it has to be opaque — and it renders *outside* the
+    // Scaffold, so the Surface is also the only thing that can publish the
+    // theme's content colour. Without it the title, the back arrow and
+    // "扫描中…" fell back to LocalContentColor's black default and were
+    // unreadable on the dark scheme's background. (The cards were fine: Card
+    // is a Surface itself.)
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            IconButton(onClick = onClose) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回训练")
-            }
-            Text("设备连接", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.weight(1f))
-            Button(
-                onClick = {
-                    if (!vm.ble.isBluetoothEnabled) {
-                        // could launch system BT enable intent; simplified: ask user
-                    }
-                    vm.toggleScan()
-                },
-                enabled = granted,
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(if (scanning) "停止" else "扫描")
+                IconButton(onClick = onClose) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回训练")
+                }
+                Text("设备连接", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.weight(1f))
+                Button(
+                    onClick = {
+                        if (!vm.ble.isBluetoothEnabled) {
+                            // could launch system BT enable intent; simplified: ask user
+                        }
+                        vm.toggleScan()
+                    },
+                    enabled = granted,
+                ) {
+                    Text(if (scanning) "停止" else "扫描")
+                }
+            }
+
+            if (scanning) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(16.dp))
+                    Spacer(Modifier.padding(start = 6.dp))
+                    Text("扫描中…", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            if (knownAddrs.isEmpty() && !scanning) {
+                Text(
+                    "点击“扫描”发现设备。骑行台需通电；心率带/踏频器需开启。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            // Connected devices first (they are the ones in use), then
+            // cycling-related kinds (trainer/HR/cadence), unknown ones last.
+            val ranked = remember(knownAddrs, trainerAddr, hrAddr, cscAddr) {
+                knownAddrs.sortedByDescending { dev ->
+                    val connected = dev.address == trainerAddr ||
+                        dev.address == hrAddr ||
+                        dev.address == cscAddr
+                    val kind = when (deviceKind(dev)) {
+                        "trainer" -> 3
+                        "hr" -> 2
+                        "csc" -> 1
+                        else -> 0
+                    }
+                    // rank = 4 bits connected + kind
+                    (if (connected) 8 else 0) + kind
+                }
+            }
+
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(ranked, key = { it.address }) { dev ->
+                    DeviceRow(
+                        dev = dev,
+                        connecting = connectingAddr == dev.address,
+                        connected = trainerAddr == dev.address ||
+                            hrAddr == dev.address ||
+                            cscAddr == dev.address,
+                        connectedRole = when (dev.address) {
+                            trainerAddr -> "骑行台"
+                            hrAddr -> "心率带"
+                            cscAddr -> "踏频器"
+                            else -> null
+                        },
+                        onConnect = {
+                            connectingAddr = dev.address
+                            connectFailure = null
+                            vm.connectDevice(dev) { result ->
+                                connectingAddr = null
+                                if (result.isFailure) {
+                                    connectFailure = result.exceptionOrNull()?.message
+                                        ?: "连接失败"
+                                }
+                            }
+                        },
+                        onDisconnect = { vm.disconnectDevice(dev.address) },
+                    )
+                }
             }
         }
 
-        if (scanning) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.size(16.dp))
-                Spacer(Modifier.padding(start = 6.dp))
-                Text("扫描中…", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-
-        if (knownAddrs.isEmpty() && !scanning) {
-            Text(
-                "点击“扫描”发现设备。骑行台需通电；心率带/踏频器需开启。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // Real failure reason, dialog so it cannot be missed.
+        if (connectFailure != null) {
+            AlertDialog(
+                onDismissRequest = { connectFailure = null },
+                title = { Text("连接失败") },
+                text = { Text(connectFailure ?: "") },
+                confirmButton = {
+                    TextButton(onClick = { connectFailure = null }) { Text("知道了") }
+                },
             )
         }
 
-        // Connected devices first (they are the ones in use), then
-        // cycling-related kinds (trainer/HR/cadence), unknown ones last.
-        val ranked = remember(knownAddrs, trainerAddr, hrAddr, cscAddr) {
-            knownAddrs.sortedByDescending { dev ->
-                val connected = dev.address == trainerAddr ||
-                    dev.address == hrAddr ||
-                    dev.address == cscAddr
-                val kind = when (deviceKind(dev)) {
-                    "trainer" -> 3
-                    "hr" -> 2
-                    "csc" -> 1
-                    else -> 0
-                }
-                // rank = 4 bits connected + kind
-                (if (connected) 8 else 0) + kind
+        // Also keep the legacy inline error for issues raised outside connect
+        // taps (e.g. control-permission lost). It appears above the list when set.
+        error?.let { msg ->
+            if (connectFailure == null) {
+                Text(msg, color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
             }
-        }
-
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(ranked, key = { it.address }) { dev ->
-                DeviceRow(
-                    dev = dev,
-                    connecting = connectingAddr == dev.address,
-                    connected = trainerAddr == dev.address ||
-                        hrAddr == dev.address ||
-                        cscAddr == dev.address,
-                    connectedRole = when (dev.address) {
-                        trainerAddr -> "骑行台"
-                        hrAddr -> "心率带"
-                        cscAddr -> "踏频器"
-                        else -> null
-                    },
-                    onConnect = {
-                        connectingAddr = dev.address
-                        connectFailure = null
-                        vm.connectDevice(dev) { result ->
-                            connectingAddr = null
-                            if (result.isFailure) {
-                                connectFailure = result.exceptionOrNull()?.message
-                                    ?: "连接失败"
-                            }
-                        }
-                    },
-                    onDisconnect = { vm.disconnectDevice(dev.address) },
-                )
-            }
-        }
-    }
-
-    // Real failure reason, dialog so it cannot be missed.
-    if (connectFailure != null) {
-        AlertDialog(
-            onDismissRequest = { connectFailure = null },
-            title = { Text("连接失败") },
-            text = { Text(connectFailure ?: "") },
-            confirmButton = {
-                TextButton(onClick = { connectFailure = null }) { Text("知道了") }
-            },
-        )
-    }
-
-    // Also keep the legacy inline error for issues raised outside connect
-    // taps (e.g. control-permission lost). It appears above the list when set.
-    error?.let { msg ->
-        if (connectFailure == null) {
-            Text(msg, color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall)
         }
     }
 }

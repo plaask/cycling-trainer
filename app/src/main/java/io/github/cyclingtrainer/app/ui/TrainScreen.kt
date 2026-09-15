@@ -28,7 +28,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -149,7 +148,7 @@ fun TrainScreen(
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace,
                         color = if (targetWatts != null) MaterialTheme.colorScheme.primary
-                        else Color.Gray,
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (targetWatts != null) {
                         Spacer(Modifier.padding(start = 8.dp))
@@ -164,7 +163,8 @@ fun TrainScreen(
                 }
             } else {
                 Text("自由骑行", fontSize = 28.sp, fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace, color = Color.Gray)
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(12.dp))
             // Live ride chart: course bars (when selected) + power/HR lines.
