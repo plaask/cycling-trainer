@@ -4,7 +4,8 @@ import java.util.UUID
 
 /**
  * GATT UUIDs and protocol constants for the BLE layers.
- * See handoff: FTMS(0x1826) trainer + HRS(0x180D) + CSC(0x1816).
+ * The three roles the app talks to: FTMS(0x1826) trainer, HRS(0x180D) heart
+ * rate, CSC(0x1816) cadence.
  */
 object GattUuids {
     // Standard services

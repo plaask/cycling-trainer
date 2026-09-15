@@ -19,3 +19,8 @@ build/
 **/key.properties
 **/keystore.properties
 Dl.java
+# Working notes for the development sessions (handoff log, internal review,
+# machine-specific environment fixes). Kept on disk, deliberately not published.
+/agent.md
+/CODE_REVIEW.md
+/ENV_FIXES.md

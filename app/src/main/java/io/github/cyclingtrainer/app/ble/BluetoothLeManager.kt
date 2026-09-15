@@ -51,7 +51,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *    callback. Timeouts cancel stale requests. This keeps writes serialised and
  *    avoids interleaved control-point commands.
  *  - Notifications / indications arrive as hot [SharedFlow]s for consumers.
- *  - No third-party BLE library (handoff decision A).
+ *  - No third-party BLE library: the platform stack is sufficient for the
+ *    FTMS / FE-C traffic this app generates.
  */
 class BluetoothLeManager(
     private val appContext: Context,

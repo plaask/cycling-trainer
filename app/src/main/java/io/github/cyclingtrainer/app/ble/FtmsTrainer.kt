@@ -11,8 +11,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * FTMS trainer (0x1826) client for an already-open [BluetoothLeManager.GattSession].
  *
- * Handshake sequence (per handoff §5, verified against OpenBike/TrackMyIndoorWorkout
- * protocol notes, implemented from the spec rather than copied code):
+ * Handshake sequence (verified against OpenBike/TrackMyIndoorWorkout protocol
+ * notes, implemented from the spec rather than copied code):
  *
  *  1. subscribe to Control Point (0x2AD9) indications + Status (0x2ADA) notifications
  *  2. read Feature / Supported Power Range

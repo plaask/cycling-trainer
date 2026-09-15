@@ -31,9 +31,10 @@
           this app relies on.
 
           No android:autoEnterPictureInPicture here on purpose: it is only a
-          static default for the same runtime flag, and the android-37 platform
-          on this machine does not carry the attribute at all (AAPT rejects the
-          manifest — see ENV_FIXES.md §3).
+          static default for the same runtime flag, and declaring it fails AAPT
+          against the SDK platform this project builds on (the attribute is
+          missing from that platform's attr table). The runtime flag is what
+          actually arms the behaviour.
 
           configChanges: without these the activity is relaunched whenever the
           window is resized during a PiP transition — the documented

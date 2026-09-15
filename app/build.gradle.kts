@@ -105,8 +105,8 @@ android {
 
     lint {
         // lintVitalAnalyzeRelease downloads a lint model and fails on this
-        // machine with a TLS handshake error (see ENV_FIXES.md: the local
-        // network breaks some TLS paths), which blocks every release build.
+        // machine with a TLS handshake error (the local network breaks some
+        // TLS paths), which blocks every release build.
         // The normal `lint` task still runs and still reports.
         checkReleaseBuilds = false
     }
