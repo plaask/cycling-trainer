@@ -389,13 +389,15 @@ private fun MetricBox(label: String, value: String, unit: String) {
     }
 }
 
-private fun timeStr(sec: Int): String {
+/** Shared with PipHud, which shows the same clock in the PiP window. */
+internal fun timeStr(sec: Int): String {
     val m = sec / 60
     val s = sec % 60
     return "%d:%02d".format(Locale.US, m, s)
 }
 
-private fun phaseLabel(p: SessionEngine.Phase): String = when (p) {
+/** Shared with PipHud, which shows the same phase in the PiP window. */
+internal fun phaseLabel(p: SessionEngine.Phase): String = when (p) {
     SessionEngine.Phase.IDLE -> "未开始"
     SessionEngine.Phase.RUNNING -> "训练中"
     SessionEngine.Phase.PAUSED -> "已暂停"

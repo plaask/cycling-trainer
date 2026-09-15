@@ -23,9 +23,28 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.CyclingTrainer">
+        <!--
+          Picture-in-picture: the ride stays visible (and the process stays
+          non-cacheable) while the athlete uses another app. Whether PiP is
+          actually entered is decided at runtime by PipPolicy and pushed into
+          PictureInPictureParams.setAutoEnterEnabled(), which is the mechanism
+          this app relies on.
+
+          No android:autoEnterPictureInPicture here on purpose: it is only a
+          static default for the same runtime flag, and the android-37 platform
+          on this machine does not carry the attribute at all (AAPT rejects the
+          manifest — see ENV_FIXES.md §3).
+
+          configChanges: without these the activity is relaunched whenever the
+          window is resized during a PiP transition — the documented
+          requirement for PiP. Declaring them also means rotation no longer
+          recreates the activity, which only helps the BLE session.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:supportsPictureInPicture="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
             android:theme="@style/Theme.CyclingTrainer">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

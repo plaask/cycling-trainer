@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Material Symbols "pause" (Apache-2.0), 24dp grid.
+  Local copy; see ic_bluetooth.xml for why material-icons-extended is avoided.
+
+  Unlike the Compose icons, this one is drawn by SystemUI in the
+  picture-in-picture menu, which does not tint it from the app theme — so the
+  fill is opaque white to stay visible on the dark menu.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M6,19h4L10,5L6,5v14zM14,5v14h4L18,5h-4z" />
+</vector>

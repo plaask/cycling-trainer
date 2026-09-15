@@ -28,6 +28,10 @@
   2. **改 `android-37.0\source.properties` 的 `AndroidVersion.ApiLevel=37.0` → `37`**（带小数点让 AGP parseInt 失败）
   3. **改 `android-37.0\package.xml` 的 `<api-level>37.0</api-level>` → `<api-level>37</api-level>`**（同样问题）
 - Build Tools 只有 36.0.0 → `app/build.gradle.kts` 加 `buildToolsVersion = "36.0.0"`。
+- 该 platform 的 `android.jar` **缺 `android:autoEnterPictureInPicture` 属性**（`android.R$attr` 里
+  只有 `supportsPictureInPicture`），manifest 里写了会 AAPT 报 “attribute ... not found”。
+  画中画自动进入改用运行时 `PictureInPictureParams.setAutoEnterEnabled(true)`（API 存在，已验证），
+  **不要再往 manifest 加那个属性**。
 
 ## 4. 代理与依赖下载
 

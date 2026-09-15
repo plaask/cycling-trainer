@@ -47,6 +47,8 @@ $env:TMP='<repo>\.tmp'; $env:TEMP=$env:TMP  # 必须固定！沙箱 TEMP 随机�
 ```
 app/src/main/java/io/github/cyclingtrainer/app/
 ├── MainActivity.kt          # 入口：权限申请 + 底部导航（训练/课程/历史/设置）
+│                            #   + 画中画：参数同步（自动进入/菜单动作）+ HUD 覆盖层
+├── PipPolicy.kt             # 何时允许系统自动缩成画中画（纯函数，JVM 可测）
 ├── AppViewModel.kt          # AndroidViewModel：课程库加载、连接编排、Session 控制、
 │                            #   HR 参考/主题等持久化；onCleared 时才 release BLE
 ├── ble/
@@ -77,6 +79,7 @@ app/src/main/java/io/github/cyclingtrainer/app/
     ├── HistoryScreen.kt     # 骑行记录列表：导出 FIT(到下载目录)/删除(仅删 CSV)
     ├── SettingsScreen.kt    # FTP/LTHR/最大心率/心率参考/主题
     ├── charts/WorkoutChart.kt # Canvas 直方图(梯形 ramp)+功率/心率曲线叠加
+    ├── PipHud.kt            # 画中画窗口内 HUD（覆盖层：底层 UI 不销毁，tab/选课不丢）
     ├── Screen.kt / theme/Theme.kt
 ```
 
@@ -261,6 +264,53 @@ B10（前台服务权限仍闲置）、C3（HrZones/PowerZones 去重）、C5（
 请优先核对功率与踏频。
 
 **验证清单（v0.3.0）**：连 X2+心率带后互不踢下线；设备页已连接项置顶且有名；连 CSC 后训练页踏频锁定 CSC；ERG 反复开关仍跟随；旋转不丢连接/课程；训练中曲线终点不越界；warmup/cooldown 梯形显示；历史导出→Download/CyclingTrainer/ 可见、可删除 CSV 不动 FIT；课程页选文件夹后 .zwo 自动列出（重启也自动加载）。
+
+### ✅ v0.4.0（画中画自动进入）
+
+**需求**：训练中回到桌面 / 切到其他应用时自动进画中画。minSdk 33 ⇒ 只走 API 31+ 的
+`PictureInPictureParams.setAutoEnterEnabled()`，不写老版本分支。
+
+**关键取舍（真要改这块先读）**
+- **不用 `onUserLeaveHint()`**：它是 API 31 以下的旧路径，而且**本 App 自己启动 Activity
+  也会触发它**——课程页的 SAF 文件夹选择器（`WorkoutsScreen.folderPicker`）就会误进画中画。
+  `setAutoEnterEnabled` 只在「本 App 的 task 被切到后台」时生效，天然避开这个坑。
+- **策略只有一个纯函数**：`PipPolicy.shouldAutoEnter(phase)`（RUNNING/PAUSED 才允许），
+  配套 `PipPolicyTest` 4 例。`MainActivity` 用 `lifecycleScope` 收 `sessionPhase`，
+  唯一出口 `applyPipParams()` 写参数：16:9 画中画 + `setActions`（暂停/继续）+ `setAutoEnterEnabled`。
+  「无训练不 PiP」就是这条策略的自然结果。
+- **manifest**：只加 `supportsPictureInPicture` +
+  `configChanges="screenSize|smallestScreenSize|screenLayout|orientation"`（官方要求，否则
+  进出画中画的窗口尺寸变化会重建 Activity）。**没有 `android:autoEnterPictureInPicture`**——
+  本机 android-37 platform 的 `android.jar` 缺这个属性，写了 AAPT 直接报错（见 `ENV_FIXES.md` §3）；
+  自动进入只靠运行时 `setAutoEnterEnabled(true)`，机制等价且首帧前就写好了。
+  副作用：**旋转不再重建 Activity**（`rememberSaveable` 照常工作，`DevicesScreen` 的
+  `stopScan()` 也不会被旋转误触发）。
+- **HUD 是覆盖层，不是替换分支**：`Box { AppRoot(vm); if (inPip) PipHud(vm) }`。
+  若写成 `if/else`，进出画中画会销毁 `AppRoot` 整棵子树，`screen`/`showDevices`/`selectedWorkoutId`
+  这些 `rememberSaveable` 在没有 `SaveableStateHolder` 时不会保留 → 展开后莫名回到训练首页、丢掉已选课程。
+- **暂停/继续走 `RemoteAction` + 未导出的运行时 `BroadcastReceiver`**：画中画窗口收不到普通点击，
+  控件只能挂在系统 PiP 菜单里；入口仍是 `vm.pauseWorkout()/resumeWorkout()`，没有第二条状态路径。
+- **HUD 吞掉指针事件**：底层完整 UI 仍在组合中（只是被盖住），万一有触摸被投递进窗口，
+  不能落到看不见的「暂停/停止」按钮上。
+- 画中画期间 Activity 是 **paused but visible**：进程按可见进程对待，1Hz 采样与 BLE 照常
+  （会话本来就在 `viewModelScope`，无 lifecycle 绑定，所以这块一行没改）。
+- 可选打磨：`onPictureInPictureUiStateChanged`（API 34）/ `isTransitioningToPip`（**API 35**，
+  必须 `SDK_INT` 守卫）在进入动画一开始就切 HUD；`onResume` 兜底防手势中途取消导致 HUD 卡住。
+
+**已知边界**：画中画里点 X 关闭 = Activity 结束 → 会话不走 `stop()`，靠 `RideRecorder`
+每 30 秒增量落盘，**最多丢最后 30 秒**（与「从最近任务划掉 App」同一条边界，归 C4 前台服务）。
+未做（有意）：`setCloseAction` 映射成「停止并保存」、`sourceRectHint`（HUD 铺满整窗，源矩形无意义）、
+`setTitle/setSubtitle`（API 36，只为折叠态文案）、设置页的画中画开关。
+
+**真机验证清单（v0.4.0）**：
+1. 连骑行台 → 开始自由骑行 → 按 Home：出现画中画小窗，功率/心率/踏频跟随实际读数、计时在走；
+2. 点小窗 → 菜单有「暂停」→ 点后窗口显示「已暂停」且计时停住 → 菜单变「继续」→ 点回后计时续走、ERG 恢复；
+3. 点小窗展开 → 回到训练页且**仍在原来的 tab**、已选课程没丢；
+4. 未开始训练时按 Home → **不**进画中画（对照组）；
+5. 骑行到课程结束 → 窗口内容变「训练已结束」；
+6. 骑行中切到别的 App（不是回桌面）同样进画中画；
+7. 回归：旋转屏幕不丢连接/课程；进出设置页、设备页正常；
+8. Android 15 机型：进入画中画的过程没有「完整界面被压小」的闪帧。
 
 ## 6. 协议速查（实现已内嵌，改 BLE 时对照）
 

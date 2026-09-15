@@ -33,6 +33,7 @@
 | 数据记录 | 1 Hz 采样写入 CSV；可导出为 `.FIT` 至 `Download/CyclingTrainer/`，兼容 Garmin Connect、Strava 等平台 |
 | 自由骑行 | 不加载课程时仅记录数据，不进行阻力控制 |
 | 界面 | 深色／浅色主题；屏幕旋转不中断连接 |
+| 画中画 | 训练中回到桌面或切换到其他应用时自动进入画中画，继续显示目标功率／功率／心率／踏频，并可在系统菜单中暂停或继续 |
 
 ## 支持设备
 
@@ -82,7 +83,7 @@ $env:Path="$env:JAVA_HOME\bin;$env:Path"
 
 .\gradlew.bat :app:assembleDebug        # 输出 app/build/outputs/apk/debug/app-debug.apk
 .\gradlew.bat :app:assembleRelease      # 输出 app/build/outputs/apk/release/app-release.apk
-.\gradlew.bat :app:testDebugUnitTest    # 运行 46 个 JVM 单元测试
+.\gradlew.bat :app:testDebugUnitTest    # 运行 50 个 JVM 单元测试
 ```
 
 首次构建需要网络连接以下载依赖；离线环境需预先准备 Gradle 缓存。
@@ -119,11 +120,12 @@ FIT 文件写入为自主实现，不依赖 Garmin FIT SDK。
 
 ## 项目状态
 
-当前版本 **v0.3.1**。
+当前版本 **v0.4.0**。
 
 尚未实现或尚未验证的功能：
 
-- **前台服务**：会话依赖 Activity 生命周期，熄屏或切换至后台时的持续性尚未处理
+- **前台服务**：会话依赖 Activity 生命周期。画中画期间 Activity 保持可见，记录与 BLE 连接不受影响；
+  但**熄屏**、以及从最近任务划掉应用后的持续性仍未处理
 - **自动重连**：传感器断开后需手动重新连接
 - **FTMS 真机验证**：该协议路径按规范实现并有抓包测试覆盖，但未在对应硬件上验证
 - **R8 发行包验证**：代码压缩后的发行包仅完成静态验证，尚未进行完整真机测试
