@@ -15,6 +15,7 @@ import android.graphics.drawable.Icon as AndroidIcon
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -45,7 +46,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import io.github.cyclingtrainer.app.session.RideSessionService
 import io.github.cyclingtrainer.app.session.SessionEngine
+import io.github.cyclingtrainer.app.session.isLive
 import io.github.cyclingtrainer.app.ui.DevicesScreen
 import io.github.cyclingtrainer.app.ui.HistoryScreen
 import io.github.cyclingtrainer.app.ui.PipHud
@@ -72,16 +75,24 @@ class MainActivity : ComponentActivity() {
     private val inPip = mutableStateOf(false)
 
     /**
-     * The one control reachable from a PiP window: the system's menu offers
-     * whatever [RemoteAction]s the params carry. It routes into the same
-     * ViewModel entry points the train screen's buttons use, so there is no
-     * second pause/resume path to keep in sync.
+     * Session controls that live outside the activity's own UI: the PiP menu's
+     * pause/resume action and the ride notification's 暂停/继续 + 停止 buttons.
+     * All of them route into the same ViewModel entry points the train screen's
+     * buttons use, so there is no second pause/resume path to keep in sync.
+     *
+     * Registered for the activity's lifetime, which is exactly as long as a
+     * session can exist — the ride lives in this activity's ViewModel, so when
+     * the activity goes away for good so does the session (and the service).
      */
-    private val pipActionReceiver = object : BroadcastReceiver() {
+    private val sessionActionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            when (vm.sessionPhase.value) {
-                SessionEngine.Phase.RUNNING -> vm.pauseWorkout()
-                SessionEngine.Phase.PAUSED -> vm.resumeWorkout()
+            when (intent?.action) {
+                RideSessionService.ACTION_TOGGLE_PAUSE -> when (vm.sessionPhase.value) {
+                    SessionEngine.Phase.RUNNING -> vm.pauseWorkout()
+                    SessionEngine.Phase.PAUSED -> vm.resumeWorkout()
+                    else -> return
+                }
+                RideSessionService.ACTION_STOP -> vm.stopWorkout()
                 else -> return
             }
             // Repaint the menu title/icon now; the session collector below
@@ -100,6 +111,10 @@ class MainActivity : ComponentActivity() {
             arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
                 Manifest.permission.BLUETOOTH_CONNECT,
+                // The ongoing notification of the ride's foreground service.
+                // Refusing it does not stop the service — the ride keeps its
+                // screen-off guarantee, the notification is simply not drawn.
+                Manifest.permission.POST_NOTIFICATIONS,
             )
         } else {
             arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -111,20 +126,35 @@ class MainActivity : ComponentActivity() {
             permissionLauncher.launch(missing.toTypedArray())
         }
 
-        // Package-scoped and unexported: only the PendingIntent this activity
-        // hands to the system can reach it.
+        // Package-scoped and unexported: only the PendingIntents this activity
+        // hands to the system (PiP menu, ride notification) reach it.
         ContextCompat.registerReceiver(
             this,
-            pipActionReceiver,
-            IntentFilter(ACTION_PIP_TOGGLE),
+            sessionActionReceiver,
+            IntentFilter().apply {
+                addAction(RideSessionService.ACTION_TOGGLE_PAUSE)
+                addAction(RideSessionService.ACTION_STOP)
+            },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
-        // PiP params follow the session: a running ride arms auto-enter, its
-        // end disarms it. StateFlow replays the current phase, so this also
-        // writes the initial params — without a ride, Home backgrounds the app
-        // exactly as before.
+        // PiP params and the screen-on flag both follow the session: a running
+        // ride arms auto-enter and keeps the screen on, its end releases both.
+        // StateFlow replays the current phase, so this also applies the initial
+        // state — without a ride, Home backgrounds the app exactly as before
+        // and the screen times out normally.
         lifecycleScope.launch {
-            vm.sessionPhase.collect { applyPipParams(it) }
+            vm.sessionPhase.collect { phase ->
+                applyPipParams(phase)
+                // A live ride keeps the screen on: the phone is on the handlebar
+                // and the system screen timeout would otherwise blank it
+                // mid-ride. This is a window flag, not a wakelock — it needs no
+                // permission and it ends the moment the ride does.
+                if (phase.isLive) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
         }
 
         setContent {
@@ -186,7 +216,8 @@ class MainActivity : ComponentActivity() {
             PendingIntent.getBroadcast(
                 this,
                 0,
-                Intent(ACTION_PIP_TOGGLE).setPackage(packageName),
+                // Same action the notification's 暂停/继续 button sends.
+                Intent(RideSessionService.ACTION_TOGGLE_PAUSE).setPackage(packageName),
                 PendingIntent.FLAG_IMMUTABLE,
             ),
         )
@@ -224,18 +255,13 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        runCatching { unregisterReceiver(pipActionReceiver) }
+        runCatching { unregisterReceiver(sessionActionReceiver) }
         super.onDestroy()
     }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { }
-
-    private companion object {
-        /** Broadcast fired by the PiP menu action. */
-        const val ACTION_PIP_TOGGLE = "io.github.cyclingtrainer.app.PIP_TOGGLE"
-    }
 }
 
 @Composable

@@ -1,6 +1,7 @@
 package io.github.cyclingtrainer.app
 
 import io.github.cyclingtrainer.app.session.SessionEngine
+import io.github.cyclingtrainer.app.session.isLive
 
 /**
  * Decides whether the activity should be armed to auto-enter picture-in-picture.
@@ -18,6 +19,5 @@ import io.github.cyclingtrainer.app.session.SessionEngine
  * JVM (same reason HrZones / FitWriter are).
  */
 object PipPolicy {
-    fun shouldAutoEnter(phase: SessionEngine.Phase): Boolean =
-        phase == SessionEngine.Phase.RUNNING || phase == SessionEngine.Phase.PAUSED
+    fun shouldAutoEnter(phase: SessionEngine.Phase): Boolean = phase.isLive
 }

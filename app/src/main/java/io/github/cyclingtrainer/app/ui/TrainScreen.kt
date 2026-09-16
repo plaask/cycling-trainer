@@ -39,6 +39,7 @@ import io.github.cyclingtrainer.app.session.HrZones
 import io.github.cyclingtrainer.app.session.PowerZones
 import io.github.cyclingtrainer.app.session.RideSample
 import io.github.cyclingtrainer.app.session.SessionEngine
+import io.github.cyclingtrainer.app.session.formatClockPair
 import io.github.cyclingtrainer.app.ui.charts.ChartLegend
 import io.github.cyclingtrainer.app.ui.charts.RideChart
 import io.github.cyclingtrainer.app.workout.Workout
@@ -192,13 +193,13 @@ fun TrainScreen(
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    timeStr(elapsed) + " / " + timeStr(totalSec),
+                    formatClockPair(elapsed, totalSec),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
                 Text(
-                    timeStr(elapsed) + " 已骑",
+                    formatClockPair(elapsed, 0),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -387,13 +388,6 @@ private fun MetricBox(label: String, value: String, unit: String) {
         Text(unit, style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-}
-
-/** Shared with PipHud, which shows the same clock in the PiP window. */
-internal fun timeStr(sec: Int): String {
-    val m = sec / 60
-    val s = sec % 60
-    return "%d:%02d".format(Locale.US, m, s)
 }
 
 /** Shared with PipHud, which shows the same phase in the PiP window. */

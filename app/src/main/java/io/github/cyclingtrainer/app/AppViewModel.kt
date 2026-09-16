@@ -14,8 +14,10 @@ import io.github.cyclingtrainer.app.ble.BluetoothLeManager
 import io.github.cyclingtrainer.app.ble.DeviceManager
 import io.github.cyclingtrainer.app.ble.GattUuids
 import io.github.cyclingtrainer.app.session.HrZones
+import io.github.cyclingtrainer.app.session.RideNotificationState
 import io.github.cyclingtrainer.app.session.RideRecorder
 import io.github.cyclingtrainer.app.session.RideSample
+import io.github.cyclingtrainer.app.session.RideSessionService
 import io.github.cyclingtrainer.app.session.SessionEngine
 import io.github.cyclingtrainer.app.ui.theme.ThemeMode
 import io.github.cyclingtrainer.app.workout.CourseSource
@@ -25,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -124,6 +127,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        // The activity is going away for good (Back, or the task being swiped
+        // away) and the session lives here, so this is the last chance to
+        // persist the ride before the scope that owns the recorder is
+        // cancelled. Blocking the teardown for one file write is the point.
+        val rec = recorder
+        engine?.stop()
+        engine = null
+        recorder = null
+        if (rec != null) runBlocking { runCatching { rec.stop() } }
+        // Nothing outlives the session it was started for — not the foreground
+        // service, not its notification.
+        RideSessionService.stop(getApplication())
         // Only release BLE when the ViewModel is truly discarded (activity
         // finished). On configuration changes (rotation) the ViewModel — and
         // therefore all device connections — survives, so riding keeps its
@@ -358,6 +373,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             onTick = { sec ->
                 elapsedSeconds.value = sec
                 recorder?.sample(sec)
+                pushRideNotification()
             },
         ).also {
             // Must be set before start(): start() pushes the first target
@@ -370,16 +386,45 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (ergEnabled.value) {
             viewModelScope.launch { mgr.startWorkout() }
         }
+        // Foreground service for the duration of the ride: it is what keeps the
+        // process out of the cached bucket once the screen goes off (see
+        // RideSessionService). Started here, from a visible activity, because
+        // Android 12+ forbids starting one from the background.
+        startRideService()
+    }
+
+    /** Keeps the screen-off guarantee — and the ride's notification — alive. */
+    private fun startRideService() {
+        RideSessionService.start(getApplication(), notificationState())
+        pushRideNotification()
+    }
+
+    private fun notificationState() = RideNotificationState(
+        phase = sessionPhase.value,
+        targetWatts = currentTargetWatts.value,
+        elapsedSec = elapsedSeconds.value,
+        totalSec = totalSeconds.value,
+    )
+
+    /**
+     * Mirrors the live session into the ongoing notification. Called once per
+     * engine tick; the service drops updates whose rendered text is unchanged,
+     * so this stays cheap.
+     */
+    private fun pushRideNotification() {
+        runCatching { RideSessionService.update(getApplication(), notificationState()) }
     }
 
     fun pauseWorkout() {
         engine?.pause()
         sessionPhase.value = SessionEngine.Phase.PAUSED
+        pushRideNotification()
     }
 
     fun resumeWorkout() {
         engine?.resume()
         sessionPhase.value = SessionEngine.Phase.RUNNING
+        pushRideNotification()
     }
 
     /**
@@ -406,6 +451,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         recorder = null
         sessionPhase.value = finalPhase
         currentTargetWatts.value = null
+        // The ride is over: the foreground service and its notification end with
+        // it (started for the session, stopped with the session).
+        RideSessionService.stop(getApplication())
         viewModelScope.launch {
             runCatching { rec?.stop() }
             // Bump the counter only after the file exists, so a History screen

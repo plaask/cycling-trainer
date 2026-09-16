@@ -141,3 +141,15 @@ class SessionEngine(
         }
     }
 }
+
+/**
+ * A ride that is on the clock: running or paused.
+ *
+ * One definition, shared by everything that has to agree on "is a ride live" —
+ * the picture-in-picture policy, the keep-screen-on window flag and the ongoing
+ * foreground-service notification. Paused counts as live on purpose: the
+ * session is still what the athlete left the app for, and the notification's
+ * "resume" action is the only way back without unlocking the phone.
+ */
+val SessionEngine.Phase.isLive: Boolean
+    get() = this == SessionEngine.Phase.RUNNING || this == SessionEngine.Phase.PAUSED

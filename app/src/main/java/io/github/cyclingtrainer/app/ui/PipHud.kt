@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.cyclingtrainer.app.AppViewModel
 import io.github.cyclingtrainer.app.session.SessionEngine
+import io.github.cyclingtrainer.app.session.formatClockPair
 import java.util.Locale
 
 /**
@@ -151,8 +152,7 @@ fun PipHud(vm: AppViewModel, modifier: Modifier = Modifier) {
                             Spacer(Modifier.height(4.dp))
                         }
                         Text(
-                            if (course) timeStr(elapsed) + " / " + timeStr(totalSec)
-                            else timeStr(elapsed) + " 已骑",
+                            formatClockPair(elapsed, if (course) totalSec else 0),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

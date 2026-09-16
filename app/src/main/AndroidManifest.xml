@@ -52,6 +52,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          Foreground service for a live ride: the platform's only supported way
+          to keep working once the screen is off (see RideSessionService).
+          connectedDevice is the type Android 14+ requires for a session that
+          talks to a Bluetooth peripheral; the matching FOREGROUND_SERVICE_*
+          permissions are declared above. Not exported, no intent filter: only
+          this app can start it.
+        -->
+        <service
+            android:name=".session.RideSessionService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
     </application>
 
 </manifest>

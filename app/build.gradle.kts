@@ -51,8 +51,8 @@ android {
         applicationId = "io.github.cyclingtrainer.app"
         minSdk = 33
         targetSdk = 37
-        versionCode = 5
-        versionName = "0.4.0"
+        versionCode = 6
+        versionName = "0.4.1"
         // The settings screen shows BuildConfig.VERSION_NAME, so this is the
         // single place the app version lives.
 
