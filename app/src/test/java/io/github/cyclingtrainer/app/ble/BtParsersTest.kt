@@ -1,8 +1,10 @@
 package io.github.cyclingtrainer.app.ble
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BtParsersTest {
@@ -99,6 +101,70 @@ class BtParsersTest {
         val (_, rpm) = BtParsers.parseCscCrank(now, prev)
         // 1 rev in 6/1024 s = 10240 rpm unrealistic for that delta but formula right
         assertNotNull(rpm)
+    }
+
+    /**
+     * Combo sensor (flags 0x03): wheel block comes first on the wire, so the
+     * crank block must be read after it. Reading from offset 1 (the old
+     * behaviour) would pick wheel revolutions up as crank revolutions and
+     * report 120 rpm here instead of 60.
+     */
+    @Test
+    fun `csc combo frame reads crank after the wheel block`() {
+        // flags 0x03, wheel rev=5000, wheel time=0, crank rev=100, crank time=0
+        val a = b(0x03, 0x88, 0x13, 0x00, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00)
+        val (s1, rpm1) = BtParsers.parseCscCrank(a, null)
+        assertNull(rpm1)
+        // next second: wheel rev +1, wheel time 512; crank rev +1, crank time 1024
+        val c = b(0x03, 0x89, 0x13, 0x00, 0x00, 0x00, 0x02, 0x65, 0x00, 0x00, 0x00, 0x00, 0x04)
+        val (_, rpm2) = BtParsers.parseCscCrank(c, s1)
+        assertNotNull(rpm2)
+        assertEquals(60.0, rpm2!!, 0.5)
+    }
+
+    /**
+     * CAD70-style short frame: 5 bytes, crank revolutions truncated to u16
+     * (flags + u16 rev + u16 event time). The standard parser required a full
+     * 6-byte crank block and returned null for every frame, which is why the
+     * sensor connected but never produced a value.
+     */
+    @Test
+    fun `csc short 5-byte crank frame yields rpm`() {
+        val a = b(0x02, 0x64, 0x00, 0x00, 0x00)
+        assertEquals(5, a.size)
+        val (s1, rpm1) = BtParsers.parseCscCrank(a, null)
+        assertNull(rpm1)
+        val c = b(0x02, 0x65, 0x00, 0x00, 0x04)
+        val (_, rpm2) = BtParsers.parseCscCrank(c, s1)
+        assertNotNull(rpm2)
+        assertEquals(60.0, rpm2!!, 0.5)
+    }
+
+    /** In the short layout the revolution counter wraps at 2^16, not 2^32. */
+    @Test
+    fun `csc short frame handles 16-bit revolution wraparound`() {
+        val prev = CscCrankState(revolutions = 65535, lastEventTime = 0)
+        val now = b(0x02, 0x02, 0x00, 0x00, 0x04)
+        val (_, rpm) = BtParsers.parseCscCrank(now, prev)
+        assertNotNull(rpm)
+        // 3 revolutions in 1024 ticks = 1 s
+        assertEquals(180.0, rpm!!, 0.5)
+    }
+
+    /**
+     * A wheel-only frame (flags bit1 clear) is what a speed sensor sends: it
+     * must produce no cadence and must be recognisable as crank-less, which is
+     * how the app refuses to use a speed sensor as the cadence source.
+     */
+    @Test
+    fun `csc wheel-only frame has no crank data`() {
+        val frame = b(0x01, 0xE8, 0x03, 0x00, 0x00, 0x00, 0x04)
+        val (_, rpm) = BtParsers.parseCscCrank(frame, null)
+        assertNull(rpm)
+        assertFalse(BtParsers.cscFrameHasCrank(frame))
+        assertTrue(BtParsers.cscFrameHasCrank(b(0x02, 0x64, 0x00, 0x00, 0x00)))
+        assertTrue(BtParsers.cscFrameHasCrank(b(0x03, 0xE8, 0x13, 0x00, 0x00)))
+        assertFalse(BtParsers.cscFrameHasCrank(ByteArray(0)))
     }
 
     private fun b(vararg ints: Int): ByteArray = ByteArray(ints.size) { ints[it].toByte() }

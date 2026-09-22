@@ -95,21 +95,51 @@ object BtParsers {
     /**
      * Cycling Speed & Cadence Measurement (0x2A5B):
      * byte0 flags: bit0 = wheel data present, bit1 = crank data present
-     * Crank: cumulative crank revolutions (u32 LE) + last crank event time (u16 LE, 1/1024 s).
+     *
+     * Layout follows the specification table: wheel block first (u32 cumulative
+     * wheel revolutions + u16 last wheel event time), crank block second (u32
+     * cumulative crank revolutions + u16 last crank event time). A combo sensor
+     * sets both flags (0x03), so the wheel block has to be skipped before the
+     * crank block — otherwise wheel revolutions get read as crank revolutions.
+     *
+     * Crank revolutions are u32 per the specification, but some cheap sensors
+     * (iGPSPORT CAD70 among them, confirmed on-device: 5-byte frames) truncate
+     * them to u16: flags + u16 revolutions + u16 event time. A crank block of 4
+     * remaining bytes is therefore read as that short layout, and its
+     * revolution delta wraps at 2^16 instead of 2^32.
+     *
      * Cadence (rpm) = 60 * 1024 * dRev / dTime; null until two crank samples.
      */
     fun parseCscCrank(data: ByteArray, prev: CscCrankState?): Pair<CscCrankState, Double?> {
         if (data.size < 2) return (prev ?: CscCrankState()) to null
         val flags = data[0].toInt() and 0xFF
         var pos = 1
+        // Wheel block precedes the crank block when both are present.
+        if (flags and 0x01 != 0) pos += 6
         var rev: Long? = null
         var time: Int? = null
+        var shortRevs = false
         if (flags and 0x02 != 0) { // crank data present
-            if (data.size < pos + 6) return (prev ?: CscCrankState()) to null
-            rev = (data[pos].toLong() and 0xFF) or ((data[pos + 1].toLong() and 0xFF) shl 8) or
-                ((data[pos + 2].toLong() and 0xFF) shl 16) or ((data[pos + 3].toLong() and 0xFF) shl 24)
-            time = (data[pos + 4].toInt() and 0xFF) or ((data[pos + 5].toInt() and 0xFF) shl 8)
-            pos += 6
+            val remaining = data.size - pos
+            when {
+                remaining >= 6 -> {
+                    rev = (data[pos].toLong() and 0xFF) or
+                        ((data[pos + 1].toLong() and 0xFF) shl 8) or
+                        ((data[pos + 2].toLong() and 0xFF) shl 16) or
+                        ((data[pos + 3].toLong() and 0xFF) shl 24)
+                    time = (data[pos + 4].toInt() and 0xFF) or
+                        ((data[pos + 5].toInt() and 0xFF) shl 8)
+                }
+                remaining >= 4 -> {
+                    // Non-standard short layout: u16 revolutions + u16 event time.
+                    shortRevs = true
+                    rev = ((data[pos].toLong() and 0xFF) or
+                        ((data[pos + 1].toLong() and 0xFF) shl 8))
+                    time = (data[pos + 2].toInt() and 0xFF) or
+                        ((data[pos + 3].toInt() and 0xFF) shl 8)
+                }
+                else -> return (prev ?: CscCrankState()) to null
+            }
         }
         val newState = CscCrankState(rev ?: prev?.revolutions, time ?: prev?.lastEventTime)
         if (rev == null || time == null || prev == null ||
@@ -119,13 +149,21 @@ object BtParsers {
         }
         var dRev = rev - prev.revolutions!!
         var dTime = time - prev.lastEventTime!!
-        if (dRev < 0) dRev += (1L shl 32)
+        if (dRev < 0) dRev += if (shortRevs) (1L shl 16) else (1L shl 32)
         if (dTime < 0) dTime += (1 shl 16) // 16-bit event-time wraparound
         if (dTime <= 0 || dRev <= 0) return newState to null
         // rpm = rev * 60 / (timeDelta * (1/1024 s))
         val rpm = dRev * 60.0 * 1024.0 / dTime
         return newState to rpm
     }
+
+    /**
+     * True when a CSC frame carries crank data (flags bit1). A wheel-only
+     * speed sensor never sets it; used to tell a speed sensor apart from a
+     * cadence sensor, which share the same CSC service UUID.
+     */
+    fun cscFrameHasCrank(data: ByteArray): Boolean =
+        data.isNotEmpty() && (data[0].toInt() and 0x02) != 0
 
     /** Supported Power Range (0x2AD8): min i16 LE, max i16 LE (W). */
     fun parseSupportedPowerRange(data: ByteArray): Pair<Int, Int>? {

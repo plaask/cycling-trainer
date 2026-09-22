@@ -280,6 +280,25 @@ class DeviceManager(
                 s.resubscribe()
             }
         }
+        // Speed sensors also expose the CSC service and connect fine, but their
+        // frames never carry the crank flag. Once frames are arriving and still
+        // no crank data has shown up, the device is not a cadence source: say so
+        // and release the role. Keeping it would lock out the trainer's own
+        // cadence (a non-null cscAddress wins over the fallback), leaving the UI
+        // on "CSC(—)" while the trainer could have supplied a real reading.
+        // A genuine cadence sensor sets the flag on every frame, even while the
+        // rider is not pedalling, so a stationary bike does not trigger this.
+        externalScope.launch {
+            kotlinx.coroutines.delay(8000)
+            if (cscAddress.value == address && sawCscFrame && !s.sawCrankData) {
+                Log.i("DeviceManager", "CSC 帧无曲柄数据，判定非踏频器 $address")
+                errorMessage.value = "该设备只发送速度数据（速度计/处于速度模式），" +
+                    "不能用作踏频源；若是双模传感器请切到踏频模式"
+                ble.disconnect(address)
+                cscAddress.value = null
+                cscReading.clear()
+            }
+        }
     }
 
     /** Set as soon as any CSC frame is parsed, valid cadence or not. */

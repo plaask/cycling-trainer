@@ -284,7 +284,10 @@ private fun deviceKind(dev: BleDevice): String = when {
 private fun kindLabel(kind: String): String = when (kind) {
     "trainer" -> "骑行台"
     "hr" -> "心率带"
-    "csc" -> "踏频器"
+    // Speed and cadence sensors share the CSC service UUID, so the scan list
+    // cannot tell them apart yet — only connecting (CSC Feature / frame flags)
+    // settles it. The connected row shows the concrete role instead.
+    "csc" -> "速度/踏频计"
     else -> ""
 }
 
